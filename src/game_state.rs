@@ -1,6 +1,5 @@
 use macroquad::logging as log;
-use macroquad::math::{Vec2, vec2};
-use macroquad::texture::Texture2D;
+use macroquad::prelude::*;
 
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
@@ -60,44 +59,121 @@ impl State {
     entity
   }
 
-  pub fn spawn_player(&mut self, components: impl hecs::DynamicBundle) -> hecs::Entity {
-    let entity = self.spawn_entity(components);
+  pub fn spawn_player_at(&mut self, pos: Vec2) -> hecs::Entity {
+    let texture_bytes = include_bytes!("../assets/textures/player.png");
+    let texture = load_texture_from_mem(texture_bytes);
 
-    self.world.insert_one(entity, PlayerTag).unwrap();
+    let entity = self.spawn_entity((Sprite(texture), Movable, OnGrid, PlayerTag, Position(pos)));
     self.player_entity.replace(entity);
 
     entity
+  }
+
+  pub fn spawn_wall_at(&mut self, pos: Vec2, texture_bytes: &[u8]) -> hecs::Entity {
+    let texture = load_texture_from_mem(texture_bytes);
+
+    self.spawn_entity((Sprite(texture), OnGrid, Solid, Position(pos)))
+  }
+
+  pub fn spawn_horizontal_wall_at(&mut self, pos: Vec2) -> hecs::Entity {
+    self.spawn_wall_at(pos, include_bytes!("../assets/textures/wall-horizontal.png"))
+  }
+
+  pub fn spawn_horizontal_left_edge_wall_at(&mut self, pos: Vec2) -> hecs::Entity {
+    self.spawn_wall_at(pos, include_bytes!("../assets/textures/wall-horizontal-left-edge.png"))
+  }
+
+  pub fn spawn_door_at(&mut self, pos: Vec2) -> hecs::Entity {
+    let texture_bytes = include_bytes!("../assets/textures/door.png");
+    let texture = load_texture_from_mem(texture_bytes);
+
+    self.spawn_entity((
+      Sprite(texture),
+      OnGrid,
+      Closed,
+      Solid,
+      Position(pos),
+      Interactable {
+        linked_entity: None,
+        handler: |state: &mut State, this_entity: hecs::Entity, _| {
+          if let Err(hecs::ComponentError::MissingComponent(_)) =
+            state.world.remove::<(Closed, Solid)>(this_entity)
+          {
+            state.world.insert(this_entity, (Closed, Solid)).unwrap();
+          }
+        },
+      },
+    ))
   }
 }
 
 // API
 impl State {
+  pub fn player_pos(&mut self) -> Option<(u32, u32)> {
+    let mut query = self.world.query_one::<&Position>(self.player_entity?);
+
+    query.get().map(|pos| (pos.x as u32, pos.y as u32)).ok()
+  }
+
   pub fn move_player(&mut self, dir: Direction) {
-    let Some(player_entity) = self.player_entity else {
+    let Some((player_entity, (pos_x, pos_y))) = self.player_entity.zip(self.player_pos()) else {
       return;
     };
 
-    let Ok((pos_x, pos_y)) = self
-      .world
-      .query_one::<(&Position, &Movable, &OnGrid)>(player_entity)
-      .get()
-      .map(|(pos, _, _)| (pos.x as u32, pos.y as u32))
-    else {
+    if !self.world.satisfies::<(&Movable, &OnGrid)>(player_entity) {
       return;
-    };
+    }
 
-    let (dest_x, dest_y) = match dir {
-      Direction::North => (None, Some(pos_y.saturating_sub(1))),
-      Direction::East => (Some(pos_x + 1), None),
-      Direction::South => (None, Some(pos_y + 1)),
-      Direction::West => (Some(pos_x.saturating_sub(1)), None),
-    };
-
-    let new_pos_x = dest_x.unwrap_or(pos_x);
-    let new_pos_y = dest_y.unwrap_or(pos_y);
+    let (new_pos_x, new_pos_y) = advance_pos_in_direction((pos_x, pos_y), dir);
 
     self.move_entity(player_entity, new_pos_x, new_pos_y);
   }
+
+  pub fn interact(&mut self, dir: Direction) {
+    let Some((pos_x, pos_y)) = self.player_pos() else {
+      return;
+    };
+
+    let (target_pos_x, target_pos_y) = advance_pos_in_direction((pos_x, pos_y), dir);
+
+    let Some(cell_entities) = self.grid.get_cell(target_pos_x, target_pos_y) else {
+      return;
+    };
+
+    let interactable_entities: Vec<(Interactable, hecs::Entity)> = cell_entities
+      .iter()
+      .filter_map(|&ent| {
+        let inter = self.world.get::<&Interactable>(ent).ok()?;
+        let inter = (*inter).clone();
+
+        Some((inter, ent))
+      })
+      .collect();
+
+    for (inter, entity) in interactable_entities {
+      (inter.handler)(self, entity, inter.linked_entity);
+    }
+  }
+}
+
+fn advance_pos_in_direction((pos_x, pos_y): (u32, u32), dir: Direction) -> (u32, u32) {
+  let (dest_x, dest_y) = match dir {
+    Direction::North => (None, Some(pos_y.saturating_sub(1))),
+    Direction::East => (Some(pos_x + 1), None),
+    Direction::South => (None, Some(pos_y + 1)),
+    Direction::West => (Some(pos_x.saturating_sub(1)), None),
+  };
+
+  let new_pos_x = dest_x.unwrap_or(pos_x);
+  let new_pos_y = dest_y.unwrap_or(pos_y);
+
+  (new_pos_x, new_pos_y)
+}
+
+fn load_texture_from_mem(bytes: &[u8]) -> Texture2D {
+  let texture = Texture2D::from_file_with_format(bytes, None);
+  texture.set_filter(FilterMode::Nearest);
+  texture
 }
 
 #[derive(Serialize, Deserialize, EnumIter, IntoStaticStr, Clone, Copy, Debug, PartialEq)]
@@ -115,7 +191,7 @@ pub struct Grid {
 }
 
 impl Grid {
-  pub const CELL_SIZE: f32 = 16.0;
+  pub const CELL_SIZE: f32 = 32.0;
 
   pub fn new(width: u32, height: u32) -> Self {
     let capacity = (width * height) as usize;
@@ -124,7 +200,6 @@ impl Grid {
     for _ in 0..capacity {
       cells.push(Vec::with_capacity(1));
     }
-
     Self { cells, width, height }
   }
 
@@ -200,6 +275,13 @@ pub struct ZoomFactor(pub f32);
 #[derive(Clone)]
 pub struct Sprite(pub Texture2D);
 
+#[derive(Clone)]
+pub struct Interactable {
+  pub linked_entity: Option<hecs::Entity>,
+  pub handler: fn(&mut State, hecs::Entity, Option<hecs::Entity>),
+}
+
+pub struct Closed;
 pub struct Movable;
 pub struct OnGrid;
 pub struct Solid;

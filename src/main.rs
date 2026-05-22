@@ -19,25 +19,21 @@ use std::sync::LazyLock;
 async fn main() -> anyhow::Result<()> {
   let mut state = State::with_grid_size(3, 3);
 
-  let centered_camera_pos = vec2(state.grid.width() as f32 / 2.0, state.grid.height() as f32 / 2.0);
-  let camera_entity =
-    state.spawn_entity((Position(centered_camera_pos), ZoomFactor(3.0), CameraTag));
+  let camera_entity = {
+    let centered_camera_pos =
+      vec2(state.grid.width() as f32 / 2.0, state.grid.height() as f32 / 2.0);
+    state.spawn_entity((Position(centered_camera_pos), ZoomFactor(3.0), CameraTag))
+  };
 
-  let player_pos = vec2(0.0, 0.0);
-  state.spawn_player((Position(player_pos), Sprite(Texture2D::empty()), Movable, OnGrid));
-
-  let wall_pos = vec2(1.0, 1.0);
-  let wall_texture_bytes = include_bytes!("../assets/textures/wall-horizontal.png");
-
-  let wall_texture = Texture2D::from_file_with_format(wall_texture_bytes, Some(ImageFormat::Png));
-  wall_texture.set_filter(FilterMode::Nearest);
-
-  state.spawn_entity((Position(wall_pos), Sprite(wall_texture), OnGrid, Solid));
+  state.spawn_player_at(vec2(0.0, 0.0));
+  state.spawn_door_at(vec2(0.0, 1.0));
+  state.spawn_horizontal_left_edge_wall_at(vec2(1.0, 1.0));
+  state.spawn_horizontal_wall_at(vec2(2.0, 1.0));
 
   let lua = lua_api::create().unwrap();
 
   loop {
-    clear_background(BLUE);
+    clear_background(BLACK);
 
     let mut ui_wants_pointer_input = false;
 
@@ -95,6 +91,10 @@ fn setup_ui_layout(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
       let selected_str: &'static str = SELECTED.into();
 
       lua_api::run(lua, state, format!("move_player(Direction.{})", selected_str)).unwrap();
+    }
+
+    if ui.button("Interact (South)").clicked() {
+      lua_api::run(lua, state, "interact(Direction.South)").unwrap();
     }
 
     let debug_cfg = DebugConfig::get_mut();

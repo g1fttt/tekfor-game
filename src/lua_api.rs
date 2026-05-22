@@ -17,6 +17,12 @@ pub fn create() -> LuaResult<Lua> {
     Ok(())
   })?;
 
+  add_func(&lua, "interact", |lua, state, dir: LuaValue| {
+    state.interact(lua.from_value(dir)?);
+
+    Ok(())
+  })?;
+
   add_enum::<Direction>(&lua)?;
 
   Ok(lua)
@@ -50,13 +56,13 @@ where
 
 fn add_enum<E>(lua: &Lua) -> LuaResult<()>
 where
-  E: IntoEnumIterator + Into<&'static str> + Serialize + Clone + Copy + 'static,
+  E: IntoEnumIterator + Into<&'static str> + Serialize + 'static,
 {
   let enum_table = lua.create_table()?;
 
   for variant in E::iter() {
-    let key: &'static str = variant.into();
     let value = lua.to_value(&variant)?;
+    let key: &'static str = variant.into();
 
     enum_table.set(key, value)?;
   }
