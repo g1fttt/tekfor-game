@@ -16,8 +16,8 @@ use std::sync::LazyLock;
 // Палитра для спрайтов: https://coolors.co/30343f-fafaff-e4d9ff-273469-1e2749
 
 #[macroquad::main(window_conf)]
-async fn main() -> anyhow::Result<()> {
-  let mut state = State::with_grid_size(3, 3);
+async fn main() -> Result<(), macroquad::Error> {
+  let mut state = State::with_grid_size(4, 4).await?;
 
   let camera_entity = {
     let centered_camera_pos =
@@ -26,7 +26,11 @@ async fn main() -> anyhow::Result<()> {
   };
 
   state.spawn_player_at(vec2(0.0, 0.0));
-  state.spawn_door_at(vec2(0.0, 1.0));
+
+  let door = state.spawn_door_at(vec2(0.0, 1.0));
+  state.spawn_pressure_plate(vec2(2.0, 0.0), Some(door));
+  state.spawn_crate_at(vec2(1.0, 0.0));
+
   state.spawn_horizontal_left_edge_wall_at(vec2(1.0, 1.0));
   state.spawn_horizontal_wall_at(vec2(2.0, 1.0));
 
@@ -34,6 +38,8 @@ async fn main() -> anyhow::Result<()> {
 
   loop {
     clear_background(BLACK);
+
+    state.tick();
 
     let mut ui_wants_pointer_input = false;
 
@@ -74,7 +80,7 @@ fn window_conf() -> Conf {
 }
 
 fn setup_ui_layout(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
-  egui::Window::new("Test window").show(egui_ctx, |ui| unsafe {
+  egui::Window::new("Debug window").show(egui_ctx, |ui| unsafe {
     static mut SELECTED: Direction = Direction::North;
 
     egui::ComboBox::from_label("Move direction").selected_text(format!("{:?}", SELECTED)).show_ui(
