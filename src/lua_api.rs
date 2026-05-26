@@ -1,10 +1,10 @@
 use crate::game::{ActionKind, Direction, State};
 
-use mlua::MaybeSend;
-use mlua::prelude::*;
-
 use serde::Serialize;
 use strum::IntoEnumIterator;
+
+use mlua::MaybeSend;
+use mlua::prelude::*;
 
 const STATE_KEY: &str = "__STATE";
 

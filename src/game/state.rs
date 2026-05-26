@@ -1,16 +1,19 @@
-use crate::Settings;
 use crate::asset::{AssetID, AssetManager};
 use crate::game::Grid;
+use crate::{Settings, utils};
 
-use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
+
+use macroquad::experimental::camera::mouse::Camera;
+use macroquad::prelude::*;
 
 use std::collections::VecDeque;
 
 pub struct State {
   pub grid: Grid,
   pub world: hecs::World,
+  pub camera: Camera,
   asset_manager: AssetManager,
   player_entity: Option<hecs::Entity>,
 }
@@ -20,9 +23,10 @@ impl State {
     let grid = Grid::new(width, height);
     let world = hecs::World::new();
 
+    let camera = Camera::new(Vec2::ZERO, 0.005);
     let asset_manager = AssetManager::load_all().await?;
 
-    Ok(Self { grid, world, asset_manager, player_entity: None })
+    Ok(Self { grid, world, camera, asset_manager, player_entity: None })
   }
 
   pub fn spawn_entity(&mut self, components: impl hecs::DynamicBundle) -> hecs::Entity {
@@ -388,12 +392,6 @@ impl State {
       action_queue.push_back(action_kind);
     }
   }
-
-  // pub fn player_pos(&mut self) -> Option<(u32, u32)> {
-  //   let mut query = self.world.query_one::<&Position>(self.player_entity?);
-
-  //   query.get().map(|pos| (pos.x as u32, pos.y as u32)).ok()
-  // }
 }
 
 fn advance_pos_in_direction((pos_x, pos_y): (u32, u32), dir: Direction) -> (u32, u32) {
@@ -474,11 +472,12 @@ enum StatefulObjectKind {
 }
 
 #[derive(Clone, Copy)]
-pub struct Position(pub Vec2);
+struct Position(Vec2);
 
 impl Position {
-  pub fn global(self) -> Vec2 {
-    vec2(self.0.x * Grid::CELL_SIZE, self.0.y * Grid::CELL_SIZE)
+  #[inline(always)]
+  fn global(self) -> Vec2 {
+    utils::global_pos(self.into_inner())
   }
 }
 

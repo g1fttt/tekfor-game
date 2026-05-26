@@ -1,16 +1,16 @@
-#![allow(static_mut_refs)]
-
 mod asset;
 mod game;
 mod lua_api;
 mod settings;
+mod utils;
 
 pub use settings::*;
 
 use egui_macroquad::egui;
 use game::*;
-use macroquad::prelude::*;
 use mlua::Lua;
+
+use macroquad::prelude::*;
 
 use std::fs;
 
@@ -21,14 +21,7 @@ use std::fs;
 async fn main() -> anyhow::Result<()> {
   Settings::init_or_load()?;
 
-  let mut state = State::with_grid_size(4, 4).await?;
-
-  let camera_entity = {
-    let centered_camera_pos =
-      vec2(state.grid.width() as f32 / 2.0, state.grid.height() as f32 / 2.0);
-    state.spawn_entity((Position(centered_camera_pos), ZoomFactor(3.0), CameraTag))
-  };
-
+  let mut state = State::with_grid_size(3, 3).await?;
   state.spawn_player_at(vec2(0.0, 0.0));
 
   let door = state.spawn_door_at(vec2(0.0, 1.0));
@@ -56,17 +49,9 @@ async fn main() -> anyhow::Result<()> {
       setup_settings_window(egui_ctx);
     });
 
-    if !ui_wants_pointer_input {
-      update_camera(&mut state.world, camera_entity);
-    }
-
-    let camera = construct_camera(&state.world, camera_entity);
-
-    set_camera(&camera);
-    {
+    with_camera(&mut state, ui_wants_pointer_input, |state| {
       state.draw_sprites();
-    }
-    set_default_camera();
+    });
 
     draw_fps();
     egui_macroquad::draw();
@@ -84,6 +69,39 @@ fn window_conf() -> Conf {
   }
 }
 
+// TODO: Переместить в state.rs, или в самостоятельный файл.
+fn with_camera(state: &mut State, ui_wants_pointer_input: bool, f: impl Fn(&mut State)) {
+  let camera = &mut state.camera;
+
+  if !ui_wants_pointer_input {
+    let (_, mouse_wheel_y) = mouse_wheel();
+
+    let offset = camera.offset;
+    {
+      camera.scale_wheel(Vec2::ZERO, mouse_wheel_y, 1.05);
+      camera.scale = camera.scale.clamp(0.001, 0.01);
+    }
+    // Хотфикс эффекта смещения камеры, когда она упирается в заданные границы.
+    camera.offset = offset;
+
+    camera.update(mouse_position_local(), is_mouse_button_down(MouseButton::Left));
+  }
+
+  let mut camera: Camera2D = (&*camera).into();
+
+  camera.zoom.y *= -1.0;
+
+  camera.target.x += Grid::CELL_SIZE * (state.grid.width() as f32 / 2.0);
+  camera.target.y += Grid::CELL_SIZE * (state.grid.height() as f32 / 2.0);
+
+  set_camera(&camera);
+  {
+    f(state);
+  }
+  set_default_camera();
+}
+
+#[allow(static_mut_refs)]
 fn setup_debug_window(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
   egui::Window::new("Debug window").show(egui_ctx, |ui| unsafe {
     static mut SCRIPT: Option<String> = None;
@@ -125,59 +143,3 @@ fn setup_settings_window(egui_ctx: &egui::Context) {
     }
   });
 }
-
-fn update_camera(world: &mut hecs::World, camera_entity: hecs::Entity) {
-  let Ok((zoom_factor, camera_pos)) =
-    world.query_one_mut::<(&mut ZoomFactor, &mut Position)>(camera_entity)
-  else {
-    return;
-  };
-
-  handle_zoom_factor(zoom_factor, 1.0, 5.0);
-
-  if is_mouse_button_down(MouseButton::Left) {
-    let mouse_delta = mouse_delta_position();
-    let speed = 15.0 / zoom_factor.into_inner();
-
-    camera_pos.x += mouse_delta.x * speed;
-    camera_pos.y += mouse_delta.y * speed;
-  }
-}
-
-fn handle_zoom_factor(zoom_factor: &mut f32, min: f32, max: f32) {
-  let mut factor = *zoom_factor;
-  let (_, wheel_y) = mouse_wheel();
-
-  if wheel_y.abs() > 0.01 {
-    let speed = 1.0 + (wheel_y.abs() * 0.01);
-
-    if wheel_y > 0.0 {
-      factor *= speed;
-    } else {
-      factor /= speed;
-    }
-  }
-
-  *zoom_factor = factor.clamp(min, max);
-}
-
-fn construct_camera(world: &hecs::World, camera_entity: hecs::Entity) -> Camera2D {
-  let zoom_factor = world.get::<&ZoomFactor>(camera_entity).map(|zf| zf.into_inner()).unwrap();
-
-  let display_rect = Rect::new(0.0, 0.0, screen_width(), screen_height());
-  let mut camera = Camera2D::from_display_rect(display_rect);
-
-  let camera_pos = world.get::<&Position>(camera_entity).unwrap();
-  camera.target = camera_pos.global();
-
-  camera.zoom.x *= zoom_factor;
-  camera.zoom.y *= -zoom_factor;
-
-  camera
-}
-
-#[derive(Clone, Copy)]
-pub struct ZoomFactor(pub f32);
-pub struct CameraTag;
-
-deref_component!(ZoomFactor, f32);
