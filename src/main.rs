@@ -1,22 +1,21 @@
 #![allow(static_mut_refs)]
 
-mod game_state;
+mod asset;
+mod game;
 mod lua_api;
 
-use macroquad::logging as log;
-use macroquad::prelude::*;
-
 use egui_macroquad::egui;
-use game_state::*;
+use game::*;
+use macroquad::prelude::*;
 use mlua::Lua;
 
-use std::sync::LazyLock;
+use std::fs;
 
 // Набор звуков:         https://ci.itch.io/400-sounds-pack
 // Палитра для спрайтов: https://coolors.co/30343f-fafaff-e4d9ff-273469-1e2749
 
 #[macroquad::main(window_conf)]
-async fn main() -> Result<(), macroquad::Error> {
+async fn main() -> anyhow::Result<()> {
   let mut state = State::with_grid_size(4, 4).await?;
 
   let camera_entity = {
@@ -39,7 +38,7 @@ async fn main() -> Result<(), macroquad::Error> {
   loop {
     clear_background(BLACK);
 
-    state.tick();
+    state.do_tick();
 
     let mut ui_wants_pointer_input = false;
 
@@ -59,7 +58,7 @@ async fn main() -> Result<(), macroquad::Error> {
 
     set_camera(&camera);
     {
-      draw_sprites(&state.world);
+      state.draw_sprites();
     }
     set_default_camera();
 
@@ -81,30 +80,28 @@ fn window_conf() -> Conf {
 
 fn setup_ui_layout(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
   egui::Window::new("Debug window").show(egui_ctx, |ui| unsafe {
-    static mut SELECTED: Direction = Direction::North;
+    static mut SCRIPT: Option<String> = None;
 
-    egui::ComboBox::from_label("Move direction").selected_text(format!("{:?}", SELECTED)).show_ui(
-      ui,
-      |ui| {
-        ui.selectable_value(&mut SELECTED, Direction::North, "North");
-        ui.selectable_value(&mut SELECTED, Direction::East, "East");
-        ui.selectable_value(&mut SELECTED, Direction::South, "South");
-        ui.selectable_value(&mut SELECTED, Direction::West, "West");
-      },
-    );
+    egui::ComboBox::from_label("Script").selected_text(format!("{:?}", SCRIPT)).show_ui(ui, |ui| {
+      for entry in fs::read_dir("scripts/").expect("Failed to list scripts") {
+        let entry = entry.unwrap();
 
-    if ui.button("Move player").clicked() {
-      let selected_str: &'static str = SELECTED.into();
+        let path = entry.path();
+        if !path.is_file() {
+          continue;
+        }
 
-      lua_api::run(lua, state, format!("move_player(Direction.{})", selected_str)).unwrap();
+        let selected_value = path.to_str().map(|path| path.to_owned());
+        let text = path.file_name().and_then(|filename| filename.to_str()).unwrap();
+
+        ui.selectable_value(&mut SCRIPT, selected_value, text);
+      }
+    });
+
+    if ui.button("Execute").clicked() {
+      let script_code = fs::read_to_string(SCRIPT.as_ref().unwrap()).unwrap();
+      lua_api::run(lua, state, script_code).unwrap();
     }
-
-    if ui.button("Interact (South)").clicked() {
-      lua_api::run(lua, state, "interact(Direction.South)").unwrap();
-    }
-
-    let debug_cfg = DebugConfig::get_mut();
-    ui.checkbox(&mut debug_cfg.draw_sprite_outline, "Draw sprite outline");
   });
 }
 
@@ -158,46 +155,8 @@ fn construct_camera(world: &hecs::World, camera_entity: hecs::Entity) -> Camera2
   camera
 }
 
-fn draw_sprites(world: &hecs::World) {
-  let mut render_queue = Vec::<(u32, Vec2, Texture2D)>::new();
+#[derive(Clone, Copy)]
+pub struct ZoomFactor(pub f32);
+pub struct CameraTag;
 
-  for (pos, sprite, entity) in world.query::<(&Position, &Sprite, hecs::Entity)>().iter() {
-    let global_pos = pos.global();
-    let z_index = world.get::<&ZIndex>(entity).map(|z| z.0).unwrap_or(0);
-
-    render_queue.push((z_index, global_pos, sprite.weak_clone()));
-  }
-
-  render_queue.sort_by_key(|&(z, _, _)| z);
-
-  for (_, global_pos, texture) in render_queue.into_iter() {
-    draw_texture(&texture, global_pos.x, global_pos.y, WHITE);
-
-    if DebugConfig::get().draw_sprite_outline {
-      draw_rectangle_lines(
-        global_pos.x,
-        global_pos.y,
-        Grid::CELL_SIZE,
-        Grid::CELL_SIZE,
-        2.0,
-        Color::from_hex(0x161d36),
-      );
-    }
-  }
-}
-
-#[derive(Default)]
-struct DebugConfig {
-  draw_sprite_outline: bool,
-}
-
-impl DebugConfig {
-  fn get_mut() -> &'static mut Self {
-    static mut CFG: LazyLock<DebugConfig> = LazyLock::new(DebugConfig::default);
-    unsafe { &mut CFG }
-  }
-
-  fn get() -> &'static Self {
-    Self::get_mut()
-  }
-}
+deref_component!(ZoomFactor, f32);

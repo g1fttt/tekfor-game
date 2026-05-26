@@ -4,10 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.102"
+ron = "0.12.1"
 egui-macroquad = { version = "0.17.3", default-features = false }
 hecs = { version = "0.11.0", features = ["serde"] }
 macroquad = { version = "0.4.14", features = ["audio", "log"] }
-mlua = { version = "0.11.6", features = ["luau", "serde"] }
+mlua = { version = "0.11.6", features = ["lua55", "serde", "anyhow"] }
 serde = { version = "1.0.228", features = ["derive"] }
 strum = { version = "0.28.0", features = ["derive"] }
 

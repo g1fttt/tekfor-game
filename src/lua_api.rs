@@ -1,4 +1,4 @@
-use crate::game_state::{Direction, State};
+use crate::game::{ActionKind, Direction, State};
 
 use mlua::MaybeSend;
 use mlua::prelude::*;
@@ -12,16 +12,18 @@ pub fn create() -> LuaResult<Lua> {
   let lua = Lua::new();
 
   add_func(&lua, "move_player", |lua, state, dir: LuaValue| {
-    state.move_player(lua.from_value(dir)?);
+    state.push_player_action(ActionKind::Move(lua.from_value(dir)?));
 
     Ok(())
   })?;
 
   add_func(&lua, "interact", |lua, state, dir: LuaValue| {
-    state.interact(lua.from_value(dir)?);
+    state.push_player_action(ActionKind::Interact(lua.from_value(dir)?));
 
     Ok(())
   })?;
+
+  // add_func(&lua, "wait", |_, _, ()| Ok(()))?;
 
   add_enum::<Direction>(&lua)?;
 
