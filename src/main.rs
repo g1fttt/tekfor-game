@@ -3,6 +3,9 @@
 mod asset;
 mod game;
 mod lua_api;
+mod settings;
+
+pub use settings::*;
 
 use egui_macroquad::egui;
 use game::*;
@@ -16,6 +19,8 @@ use std::fs;
 
 #[macroquad::main(window_conf)]
 async fn main() -> anyhow::Result<()> {
+  Settings::init_or_load()?;
+
   let mut state = State::with_grid_size(4, 4).await?;
 
   let camera_entity = {
@@ -47,7 +52,8 @@ async fn main() -> anyhow::Result<()> {
 
       egui_ctx.set_pixels_per_point(2.5);
 
-      setup_ui_layout(egui_ctx, &lua, &mut state);
+      setup_debug_window(egui_ctx, &lua, &mut state);
+      setup_settings_window(egui_ctx);
     });
 
     if !ui_wants_pointer_input {
@@ -78,7 +84,7 @@ fn window_conf() -> Conf {
   }
 }
 
-fn setup_ui_layout(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
+fn setup_debug_window(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
   egui::Window::new("Debug window").show(egui_ctx, |ui| unsafe {
     static mut SCRIPT: Option<String> = None;
 
@@ -101,6 +107,21 @@ fn setup_ui_layout(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
     if ui.button("Execute").clicked() {
       let script_code = fs::read_to_string(SCRIPT.as_ref().unwrap()).unwrap();
       lua_api::run(lua, state, script_code).unwrap();
+    }
+  });
+}
+
+fn setup_settings_window(egui_ctx: &egui::Context) {
+  egui::Window::new("Settings window").show(egui_ctx, |ui| {
+    let mut settings = Settings::get_mut();
+
+    ui.add(
+      egui::Slider::new(&mut settings.animation_speed_multiplier, 1.0..=5.0)
+        .text("Animation speed multiplier"),
+    );
+
+    if ui.button("Save").clicked() {
+      let _ = settings.save();
     }
   });
 }

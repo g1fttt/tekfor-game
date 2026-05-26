@@ -1,3 +1,4 @@
+use crate::Settings;
 use crate::asset::{AssetID, AssetManager};
 use crate::game::Grid;
 
@@ -331,7 +332,7 @@ impl State {
     let mut finished_entities = Vec::new();
 
     for (animation, entity) in self.world.query_mut::<(&mut Animation, hecs::Entity)>() {
-      animation.elapsed += get_frame_time();
+      animation.elapsed += get_frame_time() * Settings::get().animation_speed_multiplier;
 
       if animation.elapsed >= animation.duration {
         finished_entities.push(entity);
