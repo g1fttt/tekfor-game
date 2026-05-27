@@ -1,3 +1,5 @@
+use macroquad::logging as log;
+
 pub struct Grid {
   cells: Vec<Vec<hecs::Entity>>,
   width: u32,
@@ -14,6 +16,9 @@ impl Grid {
     for _ in 0..capacity {
       cells.push(Vec::with_capacity(1));
     }
+
+    log::debug!("Allocated {} bytes for grid", capacity * size_of::<Vec<hecs::Entity>>());
+
     Self { cells, width, height }
   }
 

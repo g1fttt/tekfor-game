@@ -1,8 +1,7 @@
-use crate::game::Grid;
+use crate::world::Grid;
 
-use macroquad::math::Vec2;
+use macroquad::math::{UVec2, Vec2, vec2};
 
-#[inline(always)]
-pub fn global_pos(pos: Vec2) -> Vec2 {
-  pos * Grid::CELL_SIZE
+pub fn global_pos(pos: UVec2) -> Vec2 {
+  vec2(pos.x as f32, pos.y as f32) * Grid::CELL_SIZE
 }

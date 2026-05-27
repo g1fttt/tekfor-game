@@ -1,5 +1,5 @@
 use crate::asset::{AssetID, AssetManager};
-use crate::game::Grid;
+use crate::world::Grid;
 use crate::{Settings, utils};
 
 use serde::{Deserialize, Serialize};
@@ -33,12 +33,12 @@ impl State {
     let entity = self.world.spawn(components);
 
     if let Ok((pos, _)) = self.world.query_one::<(&Position, &OnGrid)>(entity).get() {
-      self.grid.add_to_cell(entity, pos.x as u32, pos.y as u32);
+      self.grid.add_to_cell(entity, pos.x, pos.y);
     }
     entity
   }
 
-  pub fn spawn_player_at(&mut self, pos: Vec2) -> hecs::Entity {
+  pub fn spawn_player_at(&mut self, pos: UVec2) -> hecs::Entity {
     let entity = self.spawn_entity((
       Sprite(self.asset_manager.get(AssetID::Player)),
       ZIndex(1),
@@ -55,15 +55,23 @@ impl State {
     entity
   }
 
-  pub fn spawn_horizontal_wall_at(&mut self, pos: Vec2) -> hecs::Entity {
+  pub fn spawn_horizontal_wall_at(&mut self, pos: UVec2) -> hecs::Entity {
     self.spawn_wall_at(pos, AssetID::WallHorizontal)
   }
 
-  pub fn spawn_horizontal_left_edge_wall_at(&mut self, pos: Vec2) -> hecs::Entity {
+  pub fn spawn_horizontal_left_edge_wall_at(&mut self, pos: UVec2) -> hecs::Entity {
     self.spawn_wall_at(pos, AssetID::WallHorizontalLeftEdge)
   }
 
-  pub fn spawn_crate_at(&mut self, pos: Vec2) -> hecs::Entity {
+  pub fn spawn_right_lower_corner_wall_at(&mut self, pos: UVec2) -> hecs::Entity {
+    self.spawn_wall_at(pos, AssetID::WallRightLowerCorner)
+  }
+
+  fn spawn_wall_at(&mut self, pos: UVec2, id: AssetID) -> hecs::Entity {
+    self.spawn_entity((Sprite(self.asset_manager.get(id)), OnGrid, Solid, Position(pos)))
+  }
+
+  pub fn spawn_crate_at(&mut self, pos: UVec2) -> hecs::Entity {
     self.spawn_entity((
       Sprite(self.asset_manager.get(AssetID::Crate)),
       OnGrid,
@@ -74,18 +82,70 @@ impl State {
     ))
   }
 
-  pub fn spawn_pressure_plate(
-    &mut self,
-    pos: Vec2,
-    linked_entity: Option<hecs::Entity>,
-  ) -> hecs::Entity {
-    fn handler(state: &mut State, this_entity: hecs::Entity, linked_entity: Option<hecs::Entity>) {
-      let Ok(this_pos) = state.world.query_one::<&Position>(this_entity).get().cloned() else {
+  pub fn spawn_fireball_at(&mut self, pos: UVec2, dir: Direction) -> hecs::Entity {
+    fn handler(state: &mut State, this_entity: hecs::Entity, _: Option<hecs::Entity>) {
+      let Ok(facing_dir) = state.world.get::<&Facing>(this_entity).map(|facing| facing.0) else {
         return;
       };
 
-      let Some(this_cell_entities) = state.grid.get_cell(this_pos.x as u32, this_pos.y as u32)
+      // NOTE: Сущность не удалится если она движется в сторону левой верхней границы (0, 0).
+      //       Пока не знаю как это починить.
+      if !state.move_entity(this_entity, MoveOptions::new(facing_dir)) {
+        let _ = state.world.despawn(this_entity);
+      }
+    }
+
+    self.spawn_entity((
+      Sprite(Texture2D::empty()),
+      Movable,
+      OnGrid,
+      Position(pos),
+      Facing(dir),
+      Tickable(Interactable { linked_entity: None, handler }),
+    ))
+  }
+
+  pub fn spawn_fireball_thrower_at(&mut self, pos: UVec2, dir: Direction) -> hecs::Entity {
+    fn handler(state: &mut State, this_entity: hecs::Entity, _: Option<hecs::Entity>) {
+      let Ok((this_pos, facing_dir)) = state
+        .world
+        .query_one::<(&Position, &Facing)>(this_entity)
+        .get()
+        .map(|(pos, Facing(dir))| (pos.into_inner(), *dir))
       else {
+        return;
+      };
+
+      let new_pos = advance_pos_in_direction(this_pos, facing_dir);
+
+      if state.has_anything_solid_at(new_pos.x, new_pos.y) {
+        return;
+      }
+
+      state.spawn_fireball_at(new_pos, facing_dir);
+    }
+
+    self.spawn_entity((
+      Sprite(Texture2D::empty()),
+      OnGrid,
+      Position(pos),
+      Facing(dir),
+      Tickable(Interactable { linked_entity: None, handler }),
+    ))
+  }
+
+  pub fn spawn_pressure_plate(
+    &mut self,
+    pos: UVec2,
+    linked_entity: Option<hecs::Entity>,
+  ) -> hecs::Entity {
+    fn handler(state: &mut State, this_entity: hecs::Entity, linked_entity: Option<hecs::Entity>) {
+      let Ok(this_pos) = state.world.get::<&Position>(this_entity).map(|pos| pos.into_inner())
+      else {
+        return;
+      };
+
+      let Some(this_cell_entities) = state.grid.get_cell(this_pos.x, this_pos.y) else {
         return;
       };
 
@@ -108,11 +168,11 @@ impl State {
       Sprite(self.asset_manager.get(AssetID::PressurePlate)),
       OnGrid,
       Position(pos),
-      Pressable(Interactable { linked_entity, handler }),
+      Tickable(Interactable { linked_entity, handler }),
     ))
   }
 
-  pub fn spawn_door_at(&mut self, pos: Vec2) -> hecs::Entity {
+  pub fn spawn_door_at(&mut self, pos: UVec2) -> hecs::Entity {
     fn handler(state: &mut State, this_entity: hecs::Entity, _: Option<hecs::Entity>) {
       if let Err(hecs::ComponentError::MissingComponent(_)) =
         state.world.remove::<(Closed, Solid)>(this_entity)
@@ -130,10 +190,6 @@ impl State {
       Position(pos),
       Interactable { linked_entity: None, handler },
     ))
-  }
-
-  fn spawn_wall_at(&mut self, pos: Vec2, id: AssetID) -> hecs::Entity {
-    self.spawn_entity((Sprite(self.asset_manager.get(id)), OnGrid, Solid, Position(pos)))
   }
 
   fn has_anything_solid_at(&self, x: u32, y: u32) -> bool {
@@ -159,29 +215,26 @@ impl State {
       return;
     }
 
-    let (new_x, new_y) = advance_pos_in_direction((x, y), dir);
-
-    pushable_entities.into_iter().for_each(|ent| self.move_entity_to_pos(ent, new_x, new_y));
+    pushable_entities.into_iter().for_each(|ent| {
+      self.move_entity(ent, MoveOptions::new(dir));
+    });
   }
 
-  fn move_entity_to_pos(&mut self, entity: hecs::Entity, x: u32, y: u32) {
+  fn move_entity_to_pos(&mut self, entity: hecs::Entity, x: u32, y: u32) -> bool {
     let is_out_of_bounds = self.grid.get_cell(x, y).is_none();
 
     if is_out_of_bounds || self.has_anything_solid_at(x, y) {
-      return;
+      return false;
     }
 
     let Ok((entity_pos, _, _)) =
       self.world.query_one_mut::<(&mut Position, &Movable, &OnGrid)>(entity)
     else {
-      return;
+      return false;
     };
 
-    self.grid.remove_from_cell(entity, entity_pos.x as u32, entity_pos.y as u32);
+    self.grid.remove_from_cell(entity, entity_pos.x, entity_pos.y);
     self.grid.add_to_cell(entity, x, y);
-
-    let x = x as f32;
-    let y = y as f32;
 
     let start = *entity_pos;
     {
@@ -190,38 +243,41 @@ impl State {
 
       let _ = entity_pos;
     }
-    let end = Position(vec2(x, y));
+    let end = Position(uvec2(x, y));
 
     let _ = self.world.insert_one(entity, Animation::new(AnimationKind::Move { start, end }));
+
+    true
   }
 
-  fn move_entity(&mut self, entity: hecs::Entity, dir: Direction) {
+  fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) -> bool {
     if !self.world.satisfies::<(&Movable, &OnGrid)>(entity) {
-      return;
+      return false;
     }
 
-    let Ok((new_pos_x, new_pos_y)) = self
+    let Ok(new_pos) = self
       .world
       .get::<&Position>(entity)
-      .map(|pos| advance_pos_in_direction((pos.x as u32, pos.y as u32), dir))
+      .map(|pos| advance_pos_in_direction(pos.into_inner(), opts.dir))
     else {
-      return;
+      return false;
     };
 
-    self.push_entities_if_any(new_pos_x, new_pos_y, dir);
-    self.move_entity_to_pos(entity, new_pos_x, new_pos_y);
+    if opts.push {
+      self.push_entities_if_any(new_pos.x, new_pos.y, opts.dir);
+    }
+
+    self.move_entity_to_pos(entity, new_pos.x, new_pos.y)
   }
 
   fn interact(&mut self, entity: hecs::Entity, dir: Direction) {
-    let Ok((pos_x, pos_y)) =
-      self.world.query_one::<&Position>(entity).get().map(|pos| (pos.x as u32, pos.y as u32))
-    else {
+    let Ok(pos) = self.world.get::<&Position>(entity).map(|pos| pos.into_inner()) else {
       return;
     };
 
-    let (target_pos_x, target_pos_y) = advance_pos_in_direction((pos_x, pos_y), dir);
+    let target_pos = advance_pos_in_direction(pos, dir);
 
-    let Some(cell_entities) = self.grid.get_cell(target_pos_x, target_pos_y) else {
+    let Some(cell_entities) = self.grid.get_cell(target_pos.x, target_pos.y) else {
       return;
     };
 
@@ -244,11 +300,11 @@ impl State {
 impl State {
   pub fn do_tick(&mut self) {
     self.update_sprites();
+    self.update_animations();
 
-    let is_any_animation_finished = self.update_animations();
     let is_any_action_started = self.process_actions();
 
-    if is_any_animation_finished || is_any_action_started {
+    if is_any_action_started {
       self.do_logical_tick();
     }
   }
@@ -307,8 +363,11 @@ impl State {
 
     for (action_kind, entity) in actions {
       match action_kind {
-        ActionKind::Move(dir) => self.move_entity(entity, dir),
+        ActionKind::Move(dir) => {
+          self.move_entity(entity, MoveOptions { dir, push: true });
+        }
         ActionKind::Interact(dir) => self.interact(entity, dir),
+        ActionKind::NoOp => (),
       }
     }
     true
@@ -358,24 +417,20 @@ impl State {
   /// Вызывается после каждого действия, а также после окончания самой последней анимации.
   ///
   /// Если действий было 4, то эта функция вызовется 5 раз.
-  pub fn do_logical_tick(&mut self) {
+  fn do_logical_tick(&mut self) {
     // Тут можно (и нужно) обновлять логическое состояние мира:
     // * Нажимные плиты
     // * Враги
     // * И т.д.
 
-    self.update_pressure_plates();
+    self.update_tickable();
   }
 
-  fn update_pressure_plates(&mut self) {
-    let pressable: Vec<(Pressable, hecs::Entity)> = self
-      .world
-      .query::<(&Pressable, hecs::Entity)>()
-      .iter()
-      .map(|(p, e)| (p.clone(), e))
-      .collect();
+  fn update_tickable(&mut self) {
+    let tickable: Vec<(Tickable, hecs::Entity)> =
+      self.world.query::<(&Tickable, hecs::Entity)>().iter().map(|(p, e)| (p.clone(), e)).collect();
 
-    for (Pressable(interactable), entity) in pressable {
+    for (Tickable(interactable), entity) in tickable {
       (interactable.handler)(self, entity, interactable.linked_entity)
     }
   }
@@ -394,18 +449,18 @@ impl State {
   }
 }
 
-fn advance_pos_in_direction((pos_x, pos_y): (u32, u32), dir: Direction) -> (u32, u32) {
+fn advance_pos_in_direction(pos: UVec2, dir: Direction) -> UVec2 {
   let (dest_x, dest_y) = match dir {
-    Direction::North => (None, Some(pos_y.saturating_sub(1))),
-    Direction::East => (Some(pos_x + 1), None),
-    Direction::South => (None, Some(pos_y + 1)),
-    Direction::West => (Some(pos_x.saturating_sub(1)), None),
+    Direction::North => (None, Some(pos.y.saturating_sub(1))),
+    Direction::East => (Some(pos.x + 1), None),
+    Direction::South => (None, Some(pos.y + 1)),
+    Direction::West => (Some(pos.x.saturating_sub(1)), None),
   };
 
-  let new_pos_x = dest_x.unwrap_or(pos_x);
-  let new_pos_y = dest_y.unwrap_or(pos_y);
+  let new_pos_x = dest_x.unwrap_or(pos.x);
+  let new_pos_y = dest_y.unwrap_or(pos.y);
 
-  (new_pos_x, new_pos_y)
+  uvec2(new_pos_x, new_pos_y)
 }
 
 #[derive(Serialize, Deserialize, EnumIter, IntoStaticStr, Clone, Copy, Debug, PartialEq)]
@@ -414,6 +469,17 @@ pub enum Direction {
   East,
   South,
   West,
+}
+
+struct MoveOptions {
+  dir: Direction,
+  push: bool,
+}
+
+impl MoveOptions {
+  fn new(dir: Direction) -> Self {
+    Self { dir, push: false }
+  }
 }
 
 #[macro_export]
@@ -461,6 +527,7 @@ impl Animation {
 pub enum ActionKind {
   Move(Direction),
   Interact(Direction),
+  NoOp,
 }
 
 #[derive(Default)]
@@ -472,7 +539,7 @@ enum StatefulObjectKind {
 }
 
 #[derive(Clone, Copy)]
-struct Position(Vec2);
+struct Position(UVec2);
 
 impl Position {
   #[inline(always)]
@@ -493,7 +560,9 @@ struct Interactable {
 }
 
 #[derive(Clone)]
-struct Pressable(Interactable);
+struct Tickable(Interactable);
+
+struct Facing(Direction);
 
 struct Closed;
 struct Movable;
@@ -503,6 +572,6 @@ struct Solid;
 
 struct PlayerTag;
 
-deref_component!(Position, Vec2);
+deref_component!(Position, UVec2);
 deref_component!(Sprite, Texture2D);
 deref_component!(ActionQueue, VecDeque<ActionKind>);

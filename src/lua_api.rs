@@ -1,4 +1,4 @@
-use crate::game::{ActionKind, Direction, State};
+use crate::world::{ActionKind, Direction, State};
 
 use serde::Serialize;
 use strum::IntoEnumIterator;
@@ -23,7 +23,11 @@ pub fn create() -> LuaResult<Lua> {
     Ok(())
   })?;
 
-  // add_func(&lua, "wait", |_, _, ()| Ok(()))?;
+  add_func(&lua, "wait", |_, state, ()| {
+    state.push_player_action(ActionKind::NoOp);
+
+    Ok(())
+  })?;
 
   add_enum::<Direction>(&lua)?;
 

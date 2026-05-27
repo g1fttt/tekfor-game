@@ -9,6 +9,7 @@ pub enum AssetID {
   DoorOpen,
   WallHorizontal,
   WallHorizontalLeftEdge,
+  WallRightLowerCorner,
   PressurePlate,
   Crate,
 }
@@ -27,6 +28,7 @@ impl AssetManager {
     textures.insert(AssetID::DoorOpen, load_texture("assets/textures/door-open.png").await?);
     textures.insert(AssetID::WallHorizontal, load_texture("assets/textures/wall-horizontal.png").await?);
     textures.insert(AssetID::WallHorizontalLeftEdge, load_texture("assets/textures/wall-horizontal-left-edge.png").await?);
+    textures.insert(AssetID::WallRightLowerCorner, load_texture("assets/textures/wall-right-lower-corner.png").await?);
     textures.insert(AssetID::PressurePlate, load_texture("assets/textures/pressure-plate.png").await?);
     textures.insert(AssetID::Crate, load_texture("assets/textures/crate.png").await?);
 
