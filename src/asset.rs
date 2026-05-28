@@ -1,8 +1,9 @@
 use macroquad::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AssetID {
   Player,
   DoorClosed,
@@ -12,6 +13,7 @@ pub enum AssetID {
   WallRightLowerCorner,
   PressurePlate,
   Crate,
+  Dummy,
 }
 
 pub struct AssetManager {
@@ -31,6 +33,7 @@ impl AssetManager {
     textures.insert(AssetID::WallRightLowerCorner, load_texture("assets/textures/wall-right-lower-corner.png").await?);
     textures.insert(AssetID::PressurePlate, load_texture("assets/textures/pressure-plate.png").await?);
     textures.insert(AssetID::Crate, load_texture("assets/textures/crate.png").await?);
+    textures.insert(AssetID::Dummy, Texture2D::empty());
 
     textures.values().for_each(|tex| tex.set_filter(FilterMode::Nearest));
 

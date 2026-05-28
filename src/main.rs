@@ -10,6 +10,7 @@ use egui_macroquad::egui;
 use mlua::Lua;
 use world::*;
 
+use macroquad::experimental::camera::mouse::Camera;
 use macroquad::prelude::*;
 
 use std::fs;
@@ -74,23 +75,9 @@ fn window_conf() -> Conf {
 
 // TODO: Переместить в state.rs, или в самостоятельный файл.
 fn with_camera(state: &mut State, ui_wants_pointer_input: bool, f: impl Fn(&mut State)) {
-  let camera = &mut state.camera;
+  update_camera(&mut state.camera, ui_wants_pointer_input);
 
-  if !ui_wants_pointer_input {
-    let (_, mouse_wheel_y) = mouse_wheel();
-
-    let offset = camera.offset;
-    {
-      camera.scale_wheel(Vec2::ZERO, mouse_wheel_y, 1.05);
-      camera.scale = camera.scale.clamp(0.001, 0.01);
-    }
-    // Хотфикс эффекта смещения камеры, когда она упирается в заданные границы.
-    camera.offset = offset;
-
-    camera.update(mouse_position_local(), is_mouse_button_down(MouseButton::Left));
-  }
-
-  let mut camera: Camera2D = (&*camera).into();
+  let mut camera: Camera2D = (&state.camera).into();
 
   camera.zoom.y *= -1.0;
 
@@ -104,9 +91,33 @@ fn with_camera(state: &mut State, ui_wants_pointer_input: bool, f: impl Fn(&mut 
   set_default_camera();
 }
 
+fn update_camera(camera: &mut Camera, ui_wants_pointer_input: bool) {
+  if ui_wants_pointer_input {
+    return;
+  }
+
+  let (_, mouse_wheel_y) = mouse_wheel();
+
+  if mouse_wheel_y != 0.0 {
+    let base_factor = 1.05;
+
+    let raw_mul_to_scale = match mouse_wheel_y > 0.0 {
+      true => camera.scale * base_factor,
+      false => camera.scale * (1.0 / base_factor),
+    };
+
+    let clamped_mul_to_scale = raw_mul_to_scale.clamp(0.001, 0.01);
+    let safe_mul_to_scale = clamped_mul_to_scale / camera.scale;
+
+    camera.scale_mul(Vec2::ZERO, safe_mul_to_scale);
+  }
+
+  camera.update(mouse_position_local(), is_mouse_button_down(MouseButton::Left));
+}
+
 #[allow(static_mut_refs)]
 fn setup_debug_window(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
-  egui::Window::new("Debug window").show(egui_ctx, |ui| unsafe {
+  egui::Window::new("Debug window").resizable(false).show(egui_ctx, |ui| unsafe {
     static mut SCRIPT: Option<String> = None;
 
     egui::ComboBox::from_label("Script").selected_text(format!("{:?}", SCRIPT)).show_ui(ui, |ui| {
@@ -133,7 +144,7 @@ fn setup_debug_window(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
 }
 
 fn setup_settings_window(egui_ctx: &egui::Context) {
-  egui::Window::new("Settings window").show(egui_ctx, |ui| {
+  egui::Window::new("Settings window").resizable(false).show(egui_ctx, |ui| {
     let mut settings = Settings::get_mut();
 
     ui.add(
