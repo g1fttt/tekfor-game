@@ -10,7 +10,7 @@ directories = "6.0.0"
 bincode = "1.3.3"
 egui-macroquad = { version = "0.17.3", default-features = false }
 hecs = { version = "0.11.0", features = ["column-serialize"] }
-macroquad = { version = "0.4.14", features = ["audio", "log"] }
+macroquad = { version = "0.4", features = ["audio", "log"] }
 mlua = { version = "0.11.6", features = ["lua55", "serde", "anyhow"] }
 serde = { version = "1.0.228", features = ["derive"] }
 strum = { version = "0.28.0", features = ["derive"] }

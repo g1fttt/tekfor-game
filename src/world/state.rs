@@ -393,7 +393,7 @@ fn fireball_handler(state: &mut State, this_entity: hecs::Entity, _: Option<hecs
     return;
   };
 
-  // NOTE: Сущность не удалится если она движется в сторону левой верхней границы (0, 0).
+  // NOTE: Сущность не удалится если она движется в сторону левой или верхней границы.
   //       Пока не знаю как это починить.
   if !state.move_entity(this_entity, MoveOptions::new(facing_dir)) {
     let _ = state.world.despawn(this_entity);
@@ -455,7 +455,7 @@ fn door_handler(state: &mut State, this_entity: hecs::Entity, _: Option<hecs::En
   }
 }
 
-fn advance_pos_in_direction(pos: UVec2, dir: Direction) -> UVec2 {
+pub fn advance_pos_in_direction(pos: UVec2, dir: Direction) -> UVec2 {
   let (dest_x, dest_y) = match dir {
     Direction::North => (None, Some(pos.y.saturating_sub(1))),
     Direction::East => (Some(pos.x + 1), None),
@@ -520,7 +520,7 @@ enum AnimationKind {
 }
 
 #[derive(Serialize, Deserialize)]
-pub(super) struct Animation {
+pub struct Animation {
   kind: AnimationKind,
   elapsed: f32,
   duration: f32,
@@ -540,16 +540,16 @@ pub enum ActionKind {
 }
 
 #[derive(Serialize, Deserialize, Default)]
-pub(super) struct ActionQueue(VecDeque<ActionKind>);
+pub struct ActionQueue(VecDeque<ActionKind>);
 
 // Перечисление объектов, которые в зависимости от состояния - могут иметь разные спрайты.
-#[derive(Serialize, Deserialize)]
-pub(super) enum StatefulObjectKind {
+#[derive(EnumIter, IntoStaticStr, Serialize, Deserialize, Clone, Copy, PartialEq)]
+pub enum StatefulObjectKind {
   Door,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub(super) struct Position(#[serde(with = "super::serialize::uvec2_serde")] UVec2);
+pub struct Position(#[serde(with = "crate::serialize::uvec2_serde")] pub UVec2);
 
 impl Position {
   fn global(self) -> Vec2 {
@@ -557,17 +557,17 @@ impl Position {
   }
 }
 
-#[derive(Serialize, Deserialize)]
-pub(super) struct ZIndex(u32);
-
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub(super) struct Sprite(AssetID);
+pub struct ZIndex(pub u32);
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
+pub struct Sprite(pub AssetID);
 
 type InteractableHandler =
   fn(&mut State, this_entity: hecs::Entity, linked_entity: Option<hecs::Entity>);
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-enum InteractableHandlerKind {
+pub enum InteractableHandlerKind {
   Fireball,
   FireballThrower,
   PressurePlate,
@@ -586,36 +586,38 @@ impl InteractableHandlerKind {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub(super) struct Interactable {
-  linked_entity: Option<hecs::Entity>,
-  handler_kind: InteractableHandlerKind,
+pub struct Interactable {
+  pub linked_entity: Option<hecs::Entity>,
+  pub handler_kind: InteractableHandlerKind,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub(super) struct Tickable(Interactable);
+pub struct Tickable(pub Interactable);
 
-#[derive(Serialize, Deserialize)]
-pub(super) struct Facing(Direction);
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
+pub struct Facing(pub Direction);
 
-#[derive(Serialize, Deserialize)]
-pub(super) struct Closed;
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Closed;
 
-#[derive(Serialize, Deserialize)]
-pub(super) struct Movable;
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Movable;
 
-#[derive(Serialize, Deserialize)]
-pub(super) struct Pushable;
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Pushable;
 
-#[derive(Serialize, Deserialize)]
-pub(super) struct OnGrid;
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct OnGrid;
 
-#[derive(Serialize, Deserialize)]
-pub(super) struct Solid;
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Solid;
 
-#[derive(Serialize, Deserialize)]
-pub(super) struct Player;
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Player;
 
 deref_component!(Position, UVec2);
+deref_component!(ZIndex, u32);
 deref_component!(Sprite, AssetID);
 deref_component!(ActionQueue, VecDeque<ActionKind>);
 deref_component!(Tickable, Interactable);
+deref_component!(Facing, Direction);

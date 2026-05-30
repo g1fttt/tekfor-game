@@ -1,6 +1,7 @@
-use crate::world::state::*;
+use crate::world::*;
 
 use serde::{Deserialize, Serialize};
+use strum::{EnumIter, IntoStaticStr};
 
 pub fn serialize_as_binary(world: &hecs::World) -> bincode::Result<Vec<u8>> {
   let mut buf = Vec::new();
@@ -16,8 +17,8 @@ pub fn deserialize_from_binary(buf: &[u8]) -> bincode::Result<hecs::World> {
   hecs::serialize::column::deserialize(&mut WorldContextDeserialize::default(), &mut deserializer)
 }
 
-#[derive(Serialize, Deserialize)]
-enum ComponentID {
+#[derive(EnumIter, IntoStaticStr, Serialize, Deserialize, PartialEq, Clone, Copy)]
+pub enum ComponentID {
   Animation,
   ActionQueue,
   StatefulObjectKind,

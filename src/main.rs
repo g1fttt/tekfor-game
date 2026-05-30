@@ -1,5 +1,9 @@
+#![allow(static_mut_refs)]
+
 mod asset;
+mod level;
 mod lua_api;
+mod serialize;
 mod settings;
 mod utils;
 mod world;
@@ -7,6 +11,7 @@ mod world;
 pub use settings::*;
 
 use egui_macroquad::egui;
+use level::LevelEditor;
 use mlua::Lua;
 use world::*;
 
@@ -16,10 +21,13 @@ use macroquad::prelude::*;
 use std::fs;
 
 // Набор звуков:         https://ci.itch.io/400-sounds-pack
+//                       https://nihil-existentia.itch.io/free-audio-asset-collection
 // Палитра для спрайтов: ARQ4
 
 #[macroquad::main(window_conf)]
 async fn main() -> anyhow::Result<()> {
+  set_pc_assets_folder("assets");
+
   Settings::init_or_load()?;
 
   let mut state = State::with_grid_size(4, 4).await?;
@@ -36,6 +44,8 @@ async fn main() -> anyhow::Result<()> {
 
   let lua = lua_api::create().unwrap();
 
+  let mut level_editor = LevelEditor::new();
+
   loop {
     clear_background(BLACK);
 
@@ -50,10 +60,20 @@ async fn main() -> anyhow::Result<()> {
 
       setup_debug_window(egui_ctx, &lua, &mut state);
       setup_settings_window(egui_ctx);
+
+      level_editor.update_ui(&mut state, egui_ctx);
     });
+
+    level_editor.update(&mut state, ui_wants_pointer_input);
 
     with_camera(&mut state, ui_wants_pointer_input, |state| {
       state.draw_sprites();
+
+      let cursor_pos = level_editor.cursor_pos();
+      let x = cursor_pos.x as f32 * Grid::CELL_SIZE;
+      let y = cursor_pos.y as f32 * Grid::CELL_SIZE;
+
+      draw_rectangle_lines(x, y, Grid::CELL_SIZE, Grid::CELL_SIZE, 2.0, WHITE);
     });
 
     egui_macroquad::draw();
@@ -115,14 +135,13 @@ fn update_camera(camera: &mut Camera, ui_wants_pointer_input: bool) {
   camera.update(mouse_position_local(), is_mouse_button_down(MouseButton::Left));
 }
 
-#[allow(static_mut_refs)]
 fn setup_debug_window(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
   egui::Window::new("Debug window").resizable(false).show(egui_ctx, |ui| unsafe {
     static mut SCRIPT: Option<String> = None;
 
     egui::ComboBox::from_label("Script").selected_text(format!("{:?}", SCRIPT)).show_ui(ui, |ui| {
-      for entry in fs::read_dir("scripts/").expect("Failed to list scripts") {
-        let entry = entry.unwrap();
+      for entry in fs::read_dir("scripts/")? {
+        let entry = entry?;
 
         let path = entry.path();
         if !path.is_file() {
@@ -134,12 +153,16 @@ fn setup_debug_window(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
 
         ui.selectable_value(&mut SCRIPT, selected_value, text);
       }
+      Ok::<(), anyhow::Error>(())
     });
 
-    if ui.button("Execute").clicked() {
-      let script_code = fs::read_to_string(SCRIPT.as_ref().unwrap()).unwrap();
-      lua_api::run(lua, state, script_code).unwrap();
+    if let Some(ref script) = SCRIPT
+      && ui.button("Execute").clicked()
+    {
+      let script_code = fs::read_to_string(script)?;
+      lua_api::run(lua, state, script_code)?;
     }
+    Ok::<(), anyhow::Error>(())
   });
 }
 
