@@ -26,7 +26,10 @@ impl Gameplay {
     // TODO: Генерировать сетку динамически
     let grid = Grid::new(32, 32, &mut world);
 
-    Self { grid, world, script_path: None, player_entity: None }
+    let player_entity =
+      world.query_mut::<(&Player, hecs::Entity)>().into_iter().map(|(_, entity)| entity).next();
+
+    Self { grid, world, script_path: None, player_entity }
   }
 
   pub fn draw_ui(&mut self, lua: &Lua, egui_ctx: &egui::Context) -> Option<GameState> {

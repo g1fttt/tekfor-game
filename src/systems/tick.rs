@@ -21,6 +21,9 @@ pub fn fireball_handler(state: &mut Gameplay, this_entity: hecs::Entity, _: Opti
 
   // NOTE: Сущность не удалится если она движется в сторону левой или верхней границы.
   //       Пока не знаю как это починить.
+  //
+  // FIXME: Нужно сделать вспомогательную функцию despawn,
+  //        которая будет удалять сущность в том числе и на сетке.
   if !state.move_entity(this_entity, MoveOptions::new(facing_dir)) {
     let _ = state.world.despawn(this_entity);
   }
