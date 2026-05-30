@@ -19,7 +19,12 @@ pub enum AssetID {
   DoorOpen,
   WallHorizontal,
   WallHorizontalLeftEdge,
+  WallHorizontalRightEdge,
+  WallLeftLowerCorner,
+  WallLeftUpperCorner,
   WallRightLowerCorner,
+  WallRightUpperCorner,
+  WallVertical,
   PressurePlate,
   Crate,
   Dummy,
@@ -39,7 +44,12 @@ impl AssetManager {
     textures.insert(AssetID::DoorOpen, load_texture("textures/door-open.png").await?);
     textures.insert(AssetID::WallHorizontal, load_texture("textures/wall-horizontal.png").await?);
     textures.insert(AssetID::WallHorizontalLeftEdge, load_texture("textures/wall-horizontal-left-edge.png").await?);
+    textures.insert(AssetID::WallHorizontalRightEdge, load_texture("textures/wall-horizontal-right-edge.png").await?);
+    textures.insert(AssetID::WallLeftLowerCorner, load_texture("textures/wall-left-lower-corner.png").await?);
+    textures.insert(AssetID::WallLeftUpperCorner, load_texture("textures/wall-left-upper-corner.png").await?);
     textures.insert(AssetID::WallRightLowerCorner, load_texture("textures/wall-right-lower-corner.png").await?);
+    textures.insert(AssetID::WallRightUpperCorner, load_texture("textures/wall-right-upper-corner.png").await?);
+    textures.insert(AssetID::WallVertical, load_texture("textures/wall-vertical.png").await?);
     textures.insert(AssetID::PressurePlate, load_texture("textures/pressure-plate.png").await?);
     textures.insert(AssetID::Crate, load_texture("textures/crate.png").await?);
     textures.insert(AssetID::Dummy, Texture2D::empty());
