@@ -61,25 +61,7 @@ where
     enum_table.set(key, value)?;
   }
 
-  let enum_name = utils::type_name_str::<E>();
+  let enum_name = crate::utils::type_name_str::<E>();
 
   lua.globals().set(enum_name, enum_table)
-}
-
-mod utils {
-  #[test]
-  fn type_name_str_test() {
-    struct TestOuter;
-
-    mod test_mod {
-      pub struct TestInner;
-    }
-
-    assert_eq!(type_name_str::<TestOuter>(), "TestOuter");
-    assert_eq!(type_name_str::<test_mod::TestInner>(), "TestInner");
-  }
-
-  pub fn type_name_str<T>() -> &'static str {
-    std::any::type_name::<T>().split("::").last().unwrap()
-  }
 }

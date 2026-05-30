@@ -1,13 +1,22 @@
-use crate::GameState;
 use crate::resources::Settings;
+use crate::serialize::deserialize_from_binary;
+use crate::{GameState, utils};
+
 use crate::states::editor::Editor;
+use crate::states::gameplay::Gameplay;
 
 use egui_macroquad::egui;
+
+use macroquad::logging as log;
 use macroquad::miniquad::window::order_quit;
+
+use std::fs;
 
 #[derive(Default)]
 pub struct Menu {
-  should_draw_settings_window: bool,
+  should_draw_window: ShouldDrawWindow,
+  chosen_level: Option<String>,
+  should_start_level: bool,
 }
 
 impl Menu {
@@ -19,8 +28,8 @@ impl Menu {
       .title_bar(false)
       .show(egui_ctx, |ui| {
         let result = ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
-          if ui.button("Start").clicked() {
-            todo!()
+          if ui.button("Choose level").clicked() {
+            self.should_draw_window.choose_level = true;
           }
 
           if ui.button("Editor").clicked() {
@@ -30,7 +39,7 @@ impl Menu {
           }
 
           if ui.button("Settings").clicked() {
-            self.should_draw_settings_window = true;
+            self.should_draw_window.settings = true;
           }
 
           if ui.button("Quit").clicked() {
@@ -39,11 +48,24 @@ impl Menu {
 
           None
         });
+
         result.inner
       })
       .unwrap();
 
+    self.draw_choose_level_window(egui_ctx);
     self.draw_settings_window(egui_ctx);
+
+    if let Some(ref level_path) = self.chosen_level
+      && self.should_start_level
+    {
+      let bytes = fs::read(level_path).unwrap();
+      let world = deserialize_from_binary(&bytes).unwrap();
+
+      let gameplay = Box::new(Gameplay::with_world(world));
+
+      return Some(GameState::Gameplay(gameplay));
+    }
 
     // Изменилось ли глобальное-игровое состояние?
     //
@@ -51,10 +73,33 @@ impl Menu {
     inner_response.inner.unwrap()
   }
 
+  fn draw_choose_level_window(&mut self, egui_ctx: &egui::Context) {
+    egui::Window::new("Choose level")
+      .resizable(false)
+      .open(&mut self.should_draw_window.choose_level)
+      .show(egui_ctx, |ui| {
+        let selected_text = self.chosen_level.clone().unwrap_or_else(|| "...".to_owned());
+
+        egui::ComboBox::from_label("Levels").selected_text(selected_text).show_ui(ui, |ui| {
+          utils::with_entries_in("levels/", |path, filename| {
+            ui.selectable_value(&mut self.chosen_level, Some(path), filename);
+          })
+        });
+
+        if let Some(ref level_path) = self.chosen_level
+          && ui.button("Start").clicked()
+        {
+          log::debug!("Level (\"{}\") was chosen", level_path);
+
+          self.should_start_level = true;
+        }
+      });
+  }
+
   fn draw_settings_window(&mut self, egui_ctx: &egui::Context) {
     egui::Window::new("Settings")
       .resizable(false)
-      .open(&mut self.should_draw_settings_window)
+      .open(&mut self.should_draw_window.settings)
       .show(egui_ctx, |ui| {
         let mut settings = Settings::get_mut();
 
@@ -70,4 +115,10 @@ impl Menu {
         }
       });
   }
+}
+
+#[derive(Default)]
+struct ShouldDrawWindow {
+  choose_level: bool,
+  settings: bool,
 }

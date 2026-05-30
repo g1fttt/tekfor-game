@@ -6,6 +6,7 @@ pub mod states;
 pub mod systems;
 pub mod utils;
 
+use components::Position;
 use resources::AssetManager;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
@@ -36,6 +37,9 @@ impl Game {
 
     camera.zoom.y *= -1.0;
 
+    // NOTE: Потенциально бесполезный код.
+    //
+    // Нужно сделать уровни, и уже только потом решать.
     if let Some((grid_width, grid_height)) = grid_size {
       camera.target.x += Grid::CELL_SIZE * (grid_width as f32 / 2.0);
       camera.target.y += Grid::CELL_SIZE * (grid_height as f32 / 2.0);
@@ -103,7 +107,7 @@ pub struct Grid {
 impl Grid {
   pub const CELL_SIZE: f32 = 32.0;
 
-  pub fn new(width: u32, height: u32) -> Self {
+  pub fn new(width: u32, height: u32, world: &mut hecs::World) -> Self {
     let capacity = (width * height) as usize;
     let mut cells = Vec::with_capacity(capacity);
 
@@ -113,7 +117,12 @@ impl Grid {
 
     log::debug!("Allocated {} bytes for grid", capacity * size_of::<Vec<hecs::Entity>>());
 
-    Self { cells, width, height }
+    let mut this = Self { cells, width, height };
+
+    for (pos, entity) in world.query_mut::<(&Position, hecs::Entity)>() {
+      this.add_to_cell(entity, pos.x, pos.y);
+    }
+    this
   }
 
   pub fn width(&self) -> u32 {

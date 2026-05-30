@@ -1,35 +1,69 @@
 use crate::components::*;
 use crate::resources::AssetID;
-use crate::{Direction, Game, Grid, scripting, utils};
+use crate::states::menu::Menu;
+use crate::{Direction, Game, GameState, Grid, scripting, utils};
 
 use crate::systems::draw::*;
 use crate::systems::tick::update_tickable;
 
 use egui_macroquad::egui;
-use macroquad::prelude::*;
 use mlua::Lua;
+
+use macroquad::logging as log;
+use macroquad::prelude::*;
+
+use std::fs;
 
 pub struct Gameplay {
   pub grid: Grid,
   pub world: hecs::World,
-  lua: Lua,
+  script_path: Option<String>,
   player_entity: Option<hecs::Entity>,
 }
 
 impl Gameplay {
-  pub fn with_grid_size(width: u32, height: u32) -> mlua::Result<Self> {
-    Ok(Self {
-      grid: Grid::new(width, height),
-      world: hecs::World::new(),
-      lua: scripting::engine::create()?,
-      player_entity: None,
-    })
+  pub fn with_world(mut world: hecs::World) -> Self {
+    // TODO: Генерировать сетку динамически
+    let grid = Grid::new(32, 32, &mut world);
+
+    Self { grid, world, script_path: None, player_entity: None }
   }
 
-  pub fn draw_ui(&self, egui_ctx: &egui::Context) {}
+  pub fn draw_ui(&mut self, lua: &Lua, egui_ctx: &egui::Context) -> Option<GameState> {
+    let result = egui::Window::new("Debug window")
+      .resizable(false)
+      .show(egui_ctx, |ui| {
+        if ui.button("Return to main menu").clicked() {
+          let menu = Menu::default();
+
+          return Ok(Some(GameState::Menu(menu)));
+        }
+
+        ui.separator();
+
+        let selected_text = format!("{:?}", self.script_path);
+
+        egui::ComboBox::from_label("Script").selected_text(selected_text).show_ui(ui, |ui| {
+          utils::with_entries_in("scripts/", |path, filename| {
+            ui.selectable_value(&mut self.script_path, Some(path), filename);
+          })
+        });
+
+        if let Some(ref script) = self.script_path
+          && ui.button("Execute").clicked()
+        {
+          let script_code = fs::read_to_string(script)?;
+          scripting::engine::run(lua, self, script_code)?;
+        }
+        Ok::<Option<GameState>, anyhow::Error>(None)
+      })
+      .unwrap();
+
+    result.inner.unwrap().inspect_err(|err| log::error!("{}", err)).unwrap()
+  }
 
   pub fn draw(&self, state: &Game) {
-    state.with_camera(Some((self.grid.width(), self.grid.height())), |state| {
+    state.with_camera(None, |state| {
       draw_sprites(&self.world, &state.asset_manager);
     });
   }
@@ -313,35 +347,3 @@ impl MoveOptions {
     Self { dir, push: false }
   }
 }
-
-// fn setup_debug_window(egui_ctx: &egui::Context, lua: &Lua, state: &mut Game) {
-//   #[allow(static_mut_refs)]
-//   egui::Window::new("Debug window").resizable(false).show(egui_ctx, |ui| unsafe {
-//     static mut SCRIPT: Option<String> = None;
-
-//     egui::ComboBox::from_label("Script").selected_text(format!("{:?}", SCRIPT)).show_ui(ui, |ui| {
-//       for entry in fs::read_dir("scripts/")? {
-//         let entry = entry?;
-
-//         let path = entry.path();
-//         if !path.is_file() {
-//           continue;
-//         }
-
-//         let selected_value = path.to_str().map(|path| path.to_owned());
-//         let text = path.file_name().and_then(|filename| filename.to_str()).unwrap();
-
-//         ui.selectable_value(&mut SCRIPT, selected_value, text);
-//       }
-//       Ok::<(), anyhow::Error>(())
-//     });
-
-//     if let Some(ref script) = SCRIPT
-//       && ui.button("Execute").clicked()
-//     {
-//       let script_code = fs::read_to_string(script)?;
-//       scripting::engine::run(lua, state, script_code)?;
-//     }
-//     Ok::<(), anyhow::Error>(())
-//   });
-// }

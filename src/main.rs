@@ -1,8 +1,10 @@
 use egui_macroquad::egui;
-use tekfor_game::resources::Settings;
-use tekfor_game::{Game, GameState};
-
 use macroquad::prelude::*;
+use mlua::Lua;
+
+use tekfor_game::resources::Settings;
+use tekfor_game::scripting;
+use tekfor_game::{Game, GameState};
 
 // Набор звуков:         https://ci.itch.io/400-sounds-pack
 //                       https://nihil-existentia.itch.io/free-audio-asset-collection
@@ -17,6 +19,7 @@ async fn main() -> anyhow::Result<()> {
 
   let mut current_state = GameState::default();
   let mut state = Game::new().await?;
+  let lua = scripting::engine::create()?;
 
   loop {
     clear_background(BLACK);
@@ -30,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
 
       egui_ctx.set_pixels_per_point(2.5);
 
-      draw_ui(&mut current_state, egui_ctx);
+      draw_ui(&mut current_state, &lua, egui_ctx);
     });
 
     state.update_camera(ui_wants_pointer_input);
@@ -57,7 +60,7 @@ fn window_conf() -> Conf {
   }
 }
 
-fn draw_ui(current_state: &mut GameState, egui_ctx: &egui::Context) {
+fn draw_ui(current_state: &mut GameState, lua: &Lua, egui_ctx: &egui::Context) {
   match current_state {
     GameState::Menu(menu) => {
       if let Some(new_state) = menu.draw_ui(egui_ctx) {
@@ -69,7 +72,11 @@ fn draw_ui(current_state: &mut GameState, egui_ctx: &egui::Context) {
         *current_state = new_state;
       }
     }
-    GameState::Gameplay(gameplay) => gameplay.draw_ui(egui_ctx),
+    GameState::Gameplay(gameplay) => {
+      if let Some(new_state) = gameplay.draw_ui(lua, egui_ctx) {
+        *current_state = new_state;
+      }
+    }
   }
 }
 
