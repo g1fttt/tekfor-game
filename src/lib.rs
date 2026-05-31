@@ -207,11 +207,11 @@ impl WorldGrid {
   pub fn spawn_saw_at(&mut self, pos: UVec2, from: Direction, to: Direction) -> hecs::Entity {
     self.spawn_entity((
       Sprite(AssetID::Saw),
-      Bouncing { from, to },
-      Solid,
       Movable,
       OnGrid,
+      CausesDeath,
       Position(pos),
+      Bouncing { from, to },
       Tickable(Interactable { linked_entity: None, handler_kind: InteractableHandlerKind::Saw }),
     ))
   }
@@ -220,10 +220,10 @@ impl WorldGrid {
     self.spawn_entity((
       Sprite(AssetID::Player),
       ZIndex(1),
-      Solid,
       Movable,
       OnGrid,
       Player,
+      Mortal,
       Position(pos),
       ActionQueue::default(),
     ))
@@ -242,6 +242,7 @@ impl WorldGrid {
       Sprite(AssetID::Fireball),
       Movable,
       OnGrid,
+      CausesDeath,
       Position(pos),
       Facing(dir),
       Tickable(Interactable {

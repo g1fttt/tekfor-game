@@ -35,6 +35,8 @@ pub enum ComponentID {
   Solid,
   Player,
   Bouncing,
+  CausesDeath,
+  Mortal,
 }
 
 macro_rules! impl_serialize_context {
@@ -148,6 +150,8 @@ impl_serialize_context!(
   ComponentID::Solid => Solid,
   ComponentID::Player => Player,
   ComponentID::Bouncing => Bouncing,
+  ComponentID::CausesDeath => CausesDeath,
+  ComponentID::Mortal => Mortal,
 );
 
 impl_deserialize_context!(
@@ -168,6 +172,8 @@ impl_deserialize_context!(
   ComponentID::Solid => Solid,
   ComponentID::Player => Player,
   ComponentID::Bouncing => Bouncing,
+  ComponentID::CausesDeath => CausesDeath,
+  ComponentID::Mortal => Mortal,
 );
 
 pub(super) mod uvec2_serde {

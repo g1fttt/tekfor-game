@@ -158,6 +158,12 @@ pub struct OnGrid;
 pub struct Solid;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct CausesDeath;
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Mortal;
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Player;
 
 deref_component!(Position, UVec2);

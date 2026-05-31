@@ -3,7 +3,7 @@ use crate::states::menu::Menu;
 use crate::{Direction, Game, GameState, WorldGrid, scripting, utils};
 
 use crate::systems::draw::*;
-use crate::systems::tick::update_tickable;
+use crate::systems::tick::*;
 
 use egui_macroquad::egui;
 use mlua::Lua;
@@ -106,15 +106,13 @@ impl Gameplay {
     }
   }
 
-  /// Вызывается после каждого действия, а также после окончания самой последней анимации.
-  ///
-  /// Если действий было 4, то эта функция вызовется 5 раз.
   fn do_logical_tick(&mut self) {
     // Тут можно (и нужно) обновлять логическое состояние мира:
     // * Нажимные плиты
     // * Враги
     // * И т.д.
 
+    update_death_causers(&mut self.world_grid);
     update_tickable(&mut self.world_grid);
   }
 

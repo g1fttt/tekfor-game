@@ -2,6 +2,8 @@ use crate::components::*;
 use crate::states::gameplay::MoveOptions;
 use crate::{WorldGrid, utils};
 
+use macroquad::logging as log;
+
 pub fn update_tickable(world_grid: &mut WorldGrid) {
   let tickable: Vec<(InteractableHandlerKind, _, _)> = world_grid
     .query::<(&Tickable, hecs::Entity)>()
@@ -11,6 +13,30 @@ pub fn update_tickable(world_grid: &mut WorldGrid) {
 
   for (handler_kind, entity, linked_entity) in tickable {
     handler_kind.to_fn()(world_grid, entity, linked_entity);
+  }
+}
+
+pub fn update_death_causers(world_grid: &mut WorldGrid) {
+  let mut entities_to_despawn = Vec::new();
+
+  for (_, &pos) in world_grid.query::<(&CausesDeath, &Position)>().iter() {
+    let Some(cell_entities) = world_grid.get_cell(pos.x, pos.y) else {
+      continue;
+    };
+
+    for &entity in cell_entities {
+      if !world_grid.satisfies::<&Mortal>(entity) {
+        continue;
+      }
+
+      entities_to_despawn.push(entity);
+    }
+  }
+
+  if let Err(err) =
+    entities_to_despawn.into_iter().try_for_each(|entity| world_grid.despawn_entity(entity))
+  {
+    log::error!("{}", err);
   }
 }
 
