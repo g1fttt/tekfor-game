@@ -78,7 +78,7 @@ impl Gameplay {
     let is_any_animation_finished = update_animations(&mut self.world_grid);
     let is_any_action_started = self.process_actions();
 
-    if is_any_action_started {
+    if is_any_animation_finished || is_any_action_started {
       self.do_logical_tick();
     }
   }

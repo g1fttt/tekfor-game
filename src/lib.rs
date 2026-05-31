@@ -204,6 +204,18 @@ impl WorldGrid {
     entity
   }
 
+  pub fn spawn_saw_at(&mut self, pos: UVec2, from: Direction, to: Direction) -> hecs::Entity {
+    self.spawn_entity((
+      Sprite(AssetID::Saw),
+      Bouncing { from, to },
+      Solid,
+      Movable,
+      OnGrid,
+      Position(pos),
+      Tickable(Interactable { linked_entity: None, handler_kind: InteractableHandlerKind::Saw }),
+    ))
+  }
+
   pub fn spawn_player_at(&mut self, pos: UVec2) -> hecs::Entity {
     self.spawn_entity((
       Sprite(AssetID::Player),
@@ -241,7 +253,7 @@ impl WorldGrid {
 
   pub fn spawn_fireball_at(&mut self, pos: UVec2, dir: Direction) -> hecs::Entity {
     self.spawn_entity((
-      Sprite(AssetID::Dummy),
+      Sprite(AssetID::Fireball),
       Movable,
       OnGrid,
       Position(pos),
@@ -255,7 +267,7 @@ impl WorldGrid {
 
   pub fn spawn_fireball_thrower_at(&mut self, pos: UVec2, dir: Direction) -> hecs::Entity {
     self.spawn_entity((
-      Sprite(AssetID::Dummy),
+      Sprite(AssetID::FireballThrower),
       OnGrid,
       Position(pos),
       Facing(dir),
@@ -266,8 +278,20 @@ impl WorldGrid {
     ))
   }
 
-  pub fn spawn_pressure_plate(&mut self, pos: UVec2) -> hecs::Entity {
-    self.spawn_entity((Sprite(AssetID::PressurePlate), OnGrid, Position(pos)))
+  pub fn spawn_pressure_plate(
+    &mut self,
+    pos: UVec2,
+    linked_entity: Option<hecs::Entity>,
+  ) -> hecs::Entity {
+    self.spawn_entity((
+      Sprite(AssetID::PressurePlate),
+      OnGrid,
+      Position(pos),
+      Tickable(Interactable {
+        linked_entity,
+        handler_kind: InteractableHandlerKind::PressurePlate,
+      }),
+    ))
   }
 
   pub fn spawn_door_at(&mut self, pos: UVec2, is_open: bool) -> hecs::Entity {
@@ -283,10 +307,10 @@ impl WorldGrid {
   }
 
   pub fn despawn_entity(&mut self, entity: hecs::Entity) -> Result<(), hecs::NoSuchEntity> {
-    if let Ok(pos) = self.get::<&Position>(entity).map(|pos| pos.into_inner()) {
-      self.remove_from_cell(entity, pos.x, pos.y);
+    if let Ok(pos) = self.world.get::<&Position>(entity).map(|pos| pos.into_inner()) {
+      self.grid.remove_from_cell(entity, pos.x, pos.y);
     };
-    self.despawn(entity)
+    self.world.despawn(entity)
   }
 
   pub fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) -> bool {

@@ -96,6 +96,12 @@ pub struct ZIndex(pub u32);
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub struct Sprite(pub AssetID);
 
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Bouncing {
+  pub from: Direction,
+  pub to: Direction,
+}
+
 type InteractableHandler =
   fn(&mut WorldGrid, this_entity: hecs::Entity, linked_entity: Option<hecs::Entity>);
 
@@ -105,6 +111,7 @@ pub enum InteractableHandlerKind {
   FireballThrower,
   PressurePlate,
   Door,
+  Saw,
 }
 
 impl InteractableHandlerKind {
@@ -114,6 +121,7 @@ impl InteractableHandlerKind {
       InteractableHandlerKind::FireballThrower => tick::fireball_thrower_handler,
       InteractableHandlerKind::PressurePlate => tick::pressure_plate_handler,
       InteractableHandlerKind::Door => tick::door_handler,
+      InteractableHandlerKind::Saw => tick::saw_handler,
     }
   }
 }

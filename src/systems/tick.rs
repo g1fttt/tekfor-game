@@ -91,3 +91,6 @@ pub fn door_handler(
     world_grid.insert(this_entity, (Closed, Solid)).unwrap();
   }
 }
+
+pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity, _: Option<hecs::Entity>) {
+}

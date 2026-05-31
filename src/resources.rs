@@ -27,7 +27,9 @@ pub enum AssetID {
   WallVertical,
   PressurePlate,
   Crate,
-  Dummy,
+  Saw,
+  Fireball,
+  FireballThrower,
 }
 
 pub struct AssetManager {
@@ -52,7 +54,9 @@ impl AssetManager {
     textures.insert(AssetID::WallVertical, load_texture("textures/wall-vertical.png").await?);
     textures.insert(AssetID::PressurePlate, load_texture("textures/pressure-plate.png").await?);
     textures.insert(AssetID::Crate, load_texture("textures/crate.png").await?);
-    textures.insert(AssetID::Dummy, Texture2D::empty());
+    textures.insert(AssetID::Saw, load_texture("textures/saw.png").await?);
+    textures.insert(AssetID::Fireball, load_texture("textures/fireball.png").await?);
+    textures.insert(AssetID::FireballThrower, load_texture("textures/translucent.png").await?);
 
     Ok(Self { textures })
   }

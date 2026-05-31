@@ -1,4 +1,3 @@
-use crate::components::*;
 use crate::resources::AssetID;
 use crate::serialize::*;
 use crate::states::menu::Menu;
@@ -13,21 +12,18 @@ use macroquad::prelude::*;
 
 use std::fs;
 
-type ComponentAdder = Box<dyn Fn(&mut hecs::World, hecs::Entity)>;
-
 pub struct Editor {
   level_path: String,
   world_grid: WorldGrid,
   cursor_pos: UVec2,
   selected_entity: Option<hecs::Entity>,
-  component_id: Option<ComponentID>,
-  component_adder: Option<ComponentAdder>,
-  should_add_component: bool,
+  asset_id: Option<AssetID>,
   allow_ui_to_capture_keyboard: bool,
   is_in_linkage_mode: bool,
-  asset_id: AssetID,
-  /// Информация о компонентах, которая будет затем использоваться для конструирования компонента.
-  component_info: ComponentInfo,
+
+  linked_entity: Option<hecs::Entity>,
+  direction_from: Option<Direction>,
+  direction_to: Option<Direction>,
 }
 
 impl Editor {
@@ -37,13 +33,13 @@ impl Editor {
       world_grid: WorldGrid::default(),
       cursor_pos: UVec2::ZERO,
       selected_entity: None,
-      component_id: None,
-      component_adder: None,
-      should_add_component: false,
+      asset_id: None,
       allow_ui_to_capture_keyboard: false,
       is_in_linkage_mode: false,
-      asset_id: AssetID::Dummy,
-      component_info: ComponentInfo::default(),
+
+      linked_entity: None,
+      direction_from: None,
+      direction_to: None,
     }
   }
 
@@ -90,7 +86,6 @@ impl Editor {
         }
 
         self.draw_current_entity_ui(ui);
-        self.draw_component_ui(ui);
         self.draw_asset_ui(ui);
 
         ui.separator();
@@ -107,8 +102,6 @@ impl Editor {
   }
 
   pub fn update(&mut self, ui_wants_input: bool) {
-    self.try_add_component();
-
     if ui_wants_input && self.allow_ui_to_capture_keyboard {
       return;
     }
@@ -140,16 +133,6 @@ impl Editor {
   fn last_entity_under_cursor(&self) -> Option<hecs::Entity> {
     let cell_entities = self.world_grid.get_cell(self.cursor_pos.x, self.cursor_pos.y)?;
     cell_entities.last().copied()
-  }
-
-  fn try_add_component(&mut self) {
-    if self.component_id.is_none() || !self.should_add_component {
-      return;
-    }
-
-    if let Some((entity, comp)) = self.selected_entity.zip(self.component_adder.take()) {
-      comp(&mut self.world_grid, entity);
-    }
   }
 
   fn try_despawn_entity_under_cursor(&mut self) {
@@ -186,7 +169,7 @@ impl Editor {
         };
 
         let entity_mut_ref = match self.is_in_linkage_mode {
-          true => &mut self.component_info.linked_entity,
+          true => &mut self.linked_entity,
           false => &mut self.selected_entity,
         };
 
@@ -195,177 +178,142 @@ impl Editor {
     });
   }
 
-  fn draw_component_ui(&mut self, ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-      let selected_text: &'static str = self.component_id.map(Into::into).unwrap_or("...");
-
-      egui::ComboBox::from_label("Component").selected_text(selected_text).show_ui(ui, |ui| {
-        ui.selectable_value(
-          &mut self.component_id,
-          Some(ComponentID::Interactable),
-          "Interactable",
-        );
-        ui.selectable_value(&mut self.component_id, Some(ComponentID::Tickable), "Tickable");
-        ui.selectable_value(&mut self.component_id, Some(ComponentID::ZIndex), "Z index");
-        ui.selectable_value(&mut self.component_id, Some(ComponentID::Facing), "Facing");
-      });
-
-      if self.component_id.is_some() && self.selected_entity.is_some() {
-        self.should_add_component = ui.button("Add").clicked();
-      }
-    });
-
-    let Some(comp_id) = self.component_id else {
-      return;
-    };
-
-    match comp_id {
-      ComponentID::ZIndex => self.draw_z_index_ui(ui),
-      ComponentID::Interactable => self.draw_interactable_ui(ui),
-      ComponentID::Tickable => self.draw_tickable_ui(ui),
-      ComponentID::Facing => self.draw_facing_ui(ui),
-      ComponentID::Animation
-      | ComponentID::ActionQueue
-      | ComponentID::StatefulObjectKind
-      | ComponentID::Position
-      | ComponentID::Sprite
-      | ComponentID::Closed
-      | ComponentID::Movable
-      | ComponentID::Pushable
-      | ComponentID::OnGrid
-      | ComponentID::Solid
-      | ComponentID::Player => unreachable!(),
-    }
-  }
-
   fn draw_asset_ui(&mut self, ui: &mut egui::Ui) {
-    let selected_text: &'static str = self.asset_id.into();
+    let selected_text: &'static str = self.asset_id.map(Into::into).unwrap_or("...");
 
     egui::ComboBox::from_label("Asset").selected_text(selected_text).show_ui(ui, |ui| {
       for asset_id in AssetID::iter() {
         let text: &'static str = asset_id.into();
 
-        ui.selectable_value(&mut self.asset_id, asset_id, text);
+        ui.selectable_value(&mut self.asset_id, Some(asset_id), text);
       }
     });
 
-    ui.horizontal(|ui| {
-      if self.asset_id != AssetID::Dummy && ui.button("Spawn entity").clicked() {
-        let entity = match self.asset_id {
-          AssetID::Player => self.world_grid.spawn_player_at(self.cursor_pos),
-          AssetID::DoorClosed => self.world_grid.spawn_door_at(self.cursor_pos, false),
-          AssetID::DoorOpen => self.world_grid.spawn_door_at(self.cursor_pos, true),
-          wall_asset_id @ (AssetID::WallHorizontal
-          | AssetID::WallHorizontalLeftEdge
-          | AssetID::WallHorizontalRightEdge
-          | AssetID::WallLeftLowerCorner
-          | AssetID::WallLeftUpperCorner
-          | AssetID::WallRightLowerCorner
-          | AssetID::WallRightUpperCorner
-          | AssetID::WallVertical) => self.world_grid.spawn_wall_at(self.cursor_pos, wall_asset_id),
-          AssetID::PressurePlate => self.world_grid.spawn_pressure_plate(self.cursor_pos),
-          AssetID::Crate => self.world_grid.spawn_crate_at(self.cursor_pos),
-          AssetID::Dummy => unreachable!(),
-        };
+    self.draw_asset_param_ui(ui);
 
-        self.selected_entity.replace(entity);
-      }
+    ui.separator();
 
-      if self.selected_entity.is_some() && ui.button("Despawn entity").clicked() {
-        self.try_despawn_entity_under_cursor();
-      }
-    });
+    ui.checkbox(&mut self.is_in_linkage_mode, "Linkage mode");
   }
 
-  fn draw_interactable_tickable_ui(&mut self, ui: &mut egui::Ui) {
-    ui.checkbox(&mut self.is_in_linkage_mode, "Linkage mode");
+  #[rustfmt::skip]
+  fn draw_asset_param_ui(&mut self, ui: &mut egui::Ui) {
+    let Some(asset_id) = self.asset_id else {
+      return;
+    };
 
+    ui.separator();
+
+    let spawned_entity = match asset_id {
+      wall_asset_id @ (AssetID::WallHorizontal
+      | AssetID::WallHorizontalLeftEdge
+      | AssetID::WallHorizontalRightEdge
+      | AssetID::WallLeftLowerCorner
+      | AssetID::WallLeftUpperCorner
+      | AssetID::WallRightLowerCorner
+      | AssetID::WallRightUpperCorner
+      | AssetID::WallVertical) => self.draw_plain_asset_ui(ui, |this| {
+        Some(this.world_grid.spawn_wall_at(this.cursor_pos, wall_asset_id))
+      }),
+      AssetID::Crate => self.draw_plain_asset_ui(ui, |this| {
+        Some(this.world_grid.spawn_crate_at(this.cursor_pos))
+      }),
+      AssetID::Player => self.draw_plain_asset_ui(ui, |this| {
+        Some(this.world_grid.spawn_player_at(this.cursor_pos))
+      }),
+      AssetID::DoorClosed => self.draw_plain_asset_ui(ui, |this| {
+        Some(this.world_grid.spawn_door_at(this.cursor_pos, false))
+      }),
+      AssetID::DoorOpen => self.draw_plain_asset_ui(ui, |this| {
+        Some(this.world_grid.spawn_door_at(this.cursor_pos, true))
+      }),
+      AssetID::PressurePlate => self.draw_pressure_plate_ui(ui),
+      AssetID::Saw => self.draw_saw_ui(ui),
+      AssetID::Fireball => self.draw_fireball_ui(ui),
+      AssetID::FireballThrower => self.draw_fireball_thrower_ui(ui),
+    };
+
+    if let Some(entity) = spawned_entity {
+      self.selected_entity.replace(entity);
+    }
+  }
+
+  fn draw_fireball_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
+    draw_direction_ui("Direction", &mut self.direction_to, ui);
+
+    self.draw_plain_asset_ui(ui, |this| {
+      Some(this.world_grid.spawn_fireball_at(this.cursor_pos, this.direction_to?))
+    })
+  }
+
+  fn draw_fireball_thrower_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
+    draw_direction_ui("Facing", &mut self.direction_to, ui);
+
+    self.draw_plain_asset_ui(ui, |this| {
+      Some(this.world_grid.spawn_fireball_thrower_at(this.cursor_pos, this.direction_to?))
+    })
+  }
+
+  fn draw_pressure_plate_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
     let entity_text = self
-      .component_info
       .linked_entity
       .and_then(|entity| utils::entity_sprite_text(&self.world_grid, entity))
       .unwrap_or("None");
 
     ui.label(format!("Linked entity: {}", entity_text));
 
-    let selected_text: &'static str =
-      self.component_info.interactable_handler_kind.map(Into::into).unwrap_or("...");
-
-    egui::ComboBox::from_label("Handler kind").selected_text(selected_text).show_ui(ui, |ui| {
-      for kind in InteractableHandlerKind::iter() {
-        let text: &'static str = kind.into();
-
-        ui.selectable_value(&mut self.component_info.interactable_handler_kind, Some(kind), text);
-      }
-    });
+    self.draw_plain_asset_ui(ui, |this| {
+      Some(this.world_grid.spawn_pressure_plate(this.cursor_pos, this.linked_entity))
+    })
   }
 
-  fn draw_interactable_ui(&mut self, ui: &mut egui::Ui) {
-    self.draw_interactable_tickable_ui(ui);
-
-    if let Some(handler_kind) = self.component_info.interactable_handler_kind {
-      self.try_update_component_adder(Interactable {
-        linked_entity: self.component_info.linked_entity,
-        handler_kind,
-      });
-    }
-  }
-
-  fn draw_tickable_ui(&mut self, ui: &mut egui::Ui) {
-    self.draw_interactable_tickable_ui(ui);
-
-    if let Some(handler_kind) = self.component_info.interactable_handler_kind {
-      self.try_update_component_adder(Tickable(Interactable {
-        linked_entity: self.component_info.linked_entity,
-        handler_kind,
-      }));
-    }
-  }
-
-  fn draw_z_index_ui(&mut self, ui: &mut egui::Ui) {
-    ui.add(egui::Slider::new(&mut self.component_info.z_index, 0..=100));
-
-    self.try_update_component_adder(ZIndex(self.component_info.z_index));
-  }
-
-  fn draw_facing_ui(&mut self, ui: &mut egui::Ui) {
-    let selected_text: &'static str =
-      self.component_info.facing_dir.map(Into::into).unwrap_or("...");
-
-    egui::ComboBox::from_label("Direction").selected_text(selected_text).show_ui(ui, |ui| {
-      for dir in Direction::iter() {
-        let text: &'static str = dir.into();
-
-        ui.selectable_value(&mut self.component_info.facing_dir, Some(dir), text);
-      }
+  fn draw_saw_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
+    ui.horizontal(|ui| {
+      draw_direction_ui("From", &mut self.direction_from, ui);
+      draw_direction_ui("To", &mut self.direction_to, ui);
     });
 
-    if let Some(facing_dir) = self.component_info.facing_dir {
-      self.try_update_component_adder(Facing(facing_dir));
-    }
+    self.draw_plain_asset_ui(ui, |this| {
+      let (from, to) = this.direction_from.zip(this.direction_to)?;
+
+      Some(this.world_grid.spawn_saw_at(this.cursor_pos, from, to))
+    })
   }
 
-  fn try_update_component_adder<C: hecs::Component + Clone>(&mut self, component: C) {
-    if !self.should_add_component {
-      return;
-    }
+  fn draw_plain_asset_ui(
+    &mut self,
+    ui: &mut egui::Ui,
+    f: impl Fn(&mut Self) -> Option<hecs::Entity>,
+  ) -> Option<hecs::Entity> {
+    ui.horizontal(|ui| {
+      if ui.button("Spawn").clicked() {
+        return f(self);
+      }
 
-    self.component_adder.replace(Box::new(move |world, entity| {
-      let _ = world.insert_one(entity, component.clone());
-    }));
+      if self.selected_entity.is_some() && ui.button("Despawn entity").clicked() {
+        self.try_despawn_entity_under_cursor();
+      }
+
+      None
+    })
+    .inner
   }
+}
+
+fn draw_direction_ui(label: &str, dir: &mut Option<Direction>, ui: &mut egui::Ui) {
+  let selected_text: &'static str = dir.map(Into::into).unwrap_or("...");
+
+  egui::ComboBox::from_label(label).selected_text(selected_text).show_ui(ui, |ui| {
+    for curr_dir in Direction::iter() {
+      let text: &'static str = curr_dir.into();
+
+      ui.selectable_value(dir, Some(curr_dir), text);
+    }
+  });
 }
 
 impl Default for Editor {
   fn default() -> Self {
     Self::new()
   }
-}
-
-#[derive(Default)]
-struct ComponentInfo {
-  linked_entity: Option<hecs::Entity>,
-  interactable_handler_kind: Option<InteractableHandlerKind>,
-  facing_dir: Option<Direction>,
-  z_index: u32,
 }
