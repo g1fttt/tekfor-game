@@ -17,6 +17,7 @@ pub struct Gameplay {
   pub world_grid: WorldGrid,
   script_path: Option<String>,
   player_entity: Option<hecs::Entity>,
+  tick_state: TickState,
 }
 
 impl Gameplay {
@@ -30,7 +31,7 @@ impl Gameplay {
       .map(|(_, entity)| entity)
       .next();
 
-    Self { world_grid, script_path: None, player_entity }
+    Self { world_grid, script_path: None, player_entity, tick_state: TickState::ProcessingLogic }
   }
 
   pub fn draw_ui(&mut self, lua: &Lua, egui_ctx: &egui::Context) -> Option<GameState> {
@@ -75,11 +76,33 @@ impl Gameplay {
   pub fn update(&mut self) {
     update_sprites(&self.world_grid);
 
-    let is_any_animation_finished = update_animations(&mut self.world_grid);
-    let is_any_action_started = self.process_actions();
+    match self.tick_state {
+      TickState::WaitingForAction => {
+        if self.process_actions() {
+          self.tick_state = TickState::Animating;
+        }
+      }
+      TickState::Animating => {
+        if is_any_animation_active(&self.world_grid) {
+          update_animations(&mut self.world_grid);
+        } else {
+          self.tick_state = TickState::ProcessingLogic;
+        }
+      }
+      TickState::ProcessingLogic => {
+        self.do_logical_tick();
+        self.tick_state = TickState::WaitingForAction;
+      }
+    }
+  }
 
-    if is_any_animation_finished || is_any_action_started {
-      self.do_logical_tick();
+  pub fn push_player_action(&mut self, action_kind: ActionKind) {
+    let Some(entity) = self.player_entity else {
+      return;
+    };
+
+    if let Ok(mut action_queue) = self.world_grid.get::<&mut ActionQueue>(entity) {
+      action_queue.push_back(action_kind);
     }
   }
 
@@ -125,18 +148,6 @@ impl Gameplay {
   }
 }
 
-impl Gameplay {
-  pub fn push_player_action(&mut self, action_kind: ActionKind) {
-    let Some(entity) = self.player_entity else {
-      return;
-    };
-
-    if let Ok(mut action_queue) = self.world_grid.get::<&mut ActionQueue>(entity) {
-      action_queue.push_back(action_kind);
-    }
-  }
-}
-
 pub struct MoveOptions {
   pub dir: Direction,
   pub push: bool,
@@ -146,4 +157,11 @@ impl MoveOptions {
   pub fn new(dir: Direction) -> Self {
     Self { dir, push: false }
   }
+}
+
+#[derive(Debug)]
+enum TickState {
+  WaitingForAction,
+  Animating,
+  ProcessingLogic,
 }

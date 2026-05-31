@@ -212,7 +212,13 @@ impl Editor {
       | AssetID::WallLeftUpperCorner
       | AssetID::WallRightLowerCorner
       | AssetID::WallRightUpperCorner
-      | AssetID::WallVertical) => self.draw_plain_asset_ui(ui, |this| {
+      | AssetID::WallVertical
+      | AssetID::WallVerticalLeftSplit
+      | AssetID::WallVerticalRightSplit
+      | AssetID::WallHorizontalUpperSplit
+      | AssetID::WallHorizontalLowerSplit
+      | AssetID::WallVerticalTopEdge
+      | AssetID::WallVerticalBottomEdge) => self.draw_plain_asset_ui(ui, |this| {
         Some(this.world_grid.spawn_wall_at(this.cursor_pos, wall_asset_id))
       }),
       AssetID::Crate => self.draw_plain_asset_ui(ui, |this| {

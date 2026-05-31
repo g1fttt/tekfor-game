@@ -34,6 +34,7 @@ pub enum ComponentID {
   OnGrid,
   Solid,
   Player,
+  Bouncing,
 }
 
 macro_rules! impl_serialize_context {
@@ -146,6 +147,7 @@ impl_serialize_context!(
   ComponentID::OnGrid => OnGrid,
   ComponentID::Solid => Solid,
   ComponentID::Player => Player,
+  ComponentID::Bouncing => Bouncing,
 );
 
 impl_deserialize_context!(
@@ -165,6 +167,7 @@ impl_deserialize_context!(
   ComponentID::OnGrid => OnGrid,
   ComponentID::Solid => Solid,
   ComponentID::Player => Player,
+  ComponentID::Bouncing => Bouncing,
 );
 
 pub(super) mod uvec2_serde {

@@ -30,6 +30,12 @@ pub enum AssetID {
   Saw,
   Fireball,
   FireballThrower,
+  WallVerticalLeftSplit,
+  WallVerticalRightSplit,
+  WallHorizontalUpperSplit,
+  WallHorizontalLowerSplit,
+  WallVerticalTopEdge,
+  WallVerticalBottomEdge,
 }
 
 pub struct AssetManager {
@@ -57,6 +63,12 @@ impl AssetManager {
     textures.insert(AssetID::Saw, load_texture("textures/saw.png").await?);
     textures.insert(AssetID::Fireball, load_texture("textures/fireball.png").await?);
     textures.insert(AssetID::FireballThrower, load_texture("textures/translucent.png").await?);
+    textures.insert(AssetID::WallVerticalLeftSplit, load_texture("textures/wall-vertical-left-split.png").await?);
+    textures.insert(AssetID::WallVerticalRightSplit, load_texture("textures/wall-vertical-right-split.png").await?);
+    textures.insert(AssetID::WallHorizontalUpperSplit, load_texture("textures/wall-horizontal-upper-split.png").await?);
+    textures.insert(AssetID::WallHorizontalLowerSplit, load_texture("textures/wall-horizontal-lower-split.png").await?);
+    textures.insert(AssetID::WallVerticalTopEdge, load_texture("textures/wall-vertical-top-edge.png").await?);
+    textures.insert(AssetID::WallVerticalBottomEdge, load_texture("textures/wall-vertical-bottom-edge.png").await?);
 
     Ok(Self { textures })
   }

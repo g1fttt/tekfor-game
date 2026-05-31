@@ -62,6 +62,10 @@ pub fn update_animations(world: &mut hecs::World) -> bool {
   true
 }
 
+pub fn is_any_animation_active(world: &hecs::World) -> bool {
+  world.query::<&Animation>().into_iter().any(|anim| !anim.is_finished())
+}
+
 fn interpolated_pos(anim: &Animation, start: Vec2, end: Vec2) -> Vec2 {
   let ease_out_quart = |n: f32| 1.0 - (1.0 - n).powi(4);
 

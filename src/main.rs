@@ -61,22 +61,14 @@ fn window_conf() -> Conf {
 }
 
 fn draw_ui(current_state: &mut GameState, lua: &Lua, egui_ctx: &egui::Context) {
-  match current_state {
-    GameState::Menu(menu) => {
-      if let Some(new_state) = menu.draw_ui(egui_ctx) {
-        *current_state = new_state;
-      }
-    }
-    GameState::Editor(editor) => {
-      if let Some(new_state) = editor.draw_ui(egui_ctx) {
-        *current_state = new_state;
-      }
-    }
-    GameState::Gameplay(gameplay) => {
-      if let Some(new_state) = gameplay.draw_ui(lua, egui_ctx) {
-        *current_state = new_state;
-      }
-    }
+  let maybe_new_state = match current_state {
+    GameState::Menu(menu) => menu.draw_ui(egui_ctx),
+    GameState::Editor(editor) => editor.draw_ui(egui_ctx),
+    GameState::Gameplay(gameplay) => gameplay.draw_ui(lua, egui_ctx),
+  };
+
+  if let Some(new_state) = maybe_new_state {
+    *current_state = new_state;
   }
 }
 

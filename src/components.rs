@@ -58,10 +58,14 @@ impl Animation {
     (self.elapsed / self.duration).clamp(0.0, 1.0)
   }
 
+  pub fn is_finished(&self) -> bool {
+    self.elapsed >= self.duration
+  }
+
   /// Возвращает true, если анимация закончила проигрываться.
   pub fn update(&mut self, frame_time: f32) -> bool {
     self.elapsed += frame_time * Settings::get().animation_speed_multiplier;
-    self.elapsed >= self.duration
+    self.is_finished()
   }
 }
 

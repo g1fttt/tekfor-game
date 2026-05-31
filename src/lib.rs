@@ -160,8 +160,8 @@ impl Grid {
 }
 
 pub struct WorldGrid {
-  pub grid: Grid,
-  pub world: hecs::World,
+  grid: Grid,
+  world: hecs::World,
 }
 
 impl WorldGrid {
@@ -230,20 +230,6 @@ impl WorldGrid {
   }
 
   pub fn spawn_wall_at(&mut self, pos: UVec2, id: AssetID) -> hecs::Entity {
-    use AssetID::*;
-
-    assert!(matches!(
-      id,
-      WallHorizontal
-        | WallVertical
-        | WallHorizontalLeftEdge
-        | WallHorizontalRightEdge
-        | WallLeftLowerCorner
-        | WallLeftUpperCorner
-        | WallRightLowerCorner
-        | WallRightUpperCorner
-    ));
-
     self.spawn_entity((Sprite(id), OnGrid, Solid, Position(pos)))
   }
 

@@ -1,6 +1,6 @@
-use crate::WorldGrid;
 use crate::components::*;
 use crate::states::gameplay::MoveOptions;
+use crate::{WorldGrid, utils};
 
 pub fn update_tickable(world_grid: &mut WorldGrid) {
   let tickable: Vec<(InteractableHandlerKind, _, _)> = world_grid
@@ -43,7 +43,7 @@ pub fn fireball_thrower_handler(
     return;
   };
 
-  let new_pos = crate::utils::advance_pos_in_direction(this_pos, facing_dir);
+  let new_pos = utils::advance_pos_in_direction(this_pos, facing_dir);
 
   if world_grid.has_anything_solid_at(new_pos.x, new_pos.y) {
     return;
@@ -93,4 +93,25 @@ pub fn door_handler(
 }
 
 pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity, _: Option<hecs::Entity>) {
+  let Ok((this_pos, bouncing_to)) = world_grid
+    .query_one_mut::<(&Position, &Bouncing)>(this_entity)
+    .map(|(pos, b)| (pos.into_inner(), b.to))
+  else {
+    return;
+  };
+
+  let new_pos = utils::advance_pos_in_direction(this_pos, bouncing_to);
+
+  if let Ok(mut bouncing) = world_grid.get::<&mut Bouncing>(this_entity)
+    && world_grid.has_anything_solid_at(new_pos.x, new_pos.y)
+  {
+    let from = bouncing.from;
+
+    bouncing.from = bouncing.to;
+    bouncing.to = from;
+  }
+
+  if let Ok(dir) = world_grid.get::<&Bouncing>(this_entity).map(|b| b.to) {
+    world_grid.move_entity(this_entity, MoveOptions::new(dir));
+  }
 }
