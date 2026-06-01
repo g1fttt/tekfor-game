@@ -18,7 +18,7 @@ pub struct Editor {
   cursor_pos: UVec2,
   selected_entity: Option<hecs::Entity>,
   asset_id: Option<AssetID>,
-  allow_ui_to_capture_keyboard: bool,
+  should_capture_keyboard: bool,
   is_in_linkage_mode: bool,
 
   linked_entity: Option<hecs::Entity>,
@@ -34,7 +34,7 @@ impl Editor {
       cursor_pos: UVec2::ZERO,
       selected_entity: None,
       asset_id: None,
-      allow_ui_to_capture_keyboard: false,
+      should_capture_keyboard: false,
       is_in_linkage_mode: false,
 
       linked_entity: None,
@@ -64,7 +64,12 @@ impl Editor {
         ui.separator();
 
         let save_load_result = ui.horizontal(|ui| {
-          egui::TextEdit::singleline(&mut self.level_path).hint_text("Level path").show(ui);
+          let resp = egui::TextEdit::singleline(&mut self.level_path)
+            .hint_text("Level path")
+            .show(ui)
+            .response;
+
+          self.should_capture_keyboard = resp.clicked() || resp.changed();
 
           if ui.button("Save").clicked() {
             let bytes = serialize_as_binary(&self.world_grid)?;
@@ -91,8 +96,6 @@ impl Editor {
         ui.separator();
 
         ui.label(format!("Position: x: {}, y: {}", self.cursor_pos.x, self.cursor_pos.y));
-        ui.checkbox(&mut self.allow_ui_to_capture_keyboard, "Allow ui to capture keyboard")
-          .on_hover_text("Might be useful when is tired of moving cursor away from UI");
 
         None
       })
@@ -102,7 +105,7 @@ impl Editor {
   }
 
   pub fn update(&mut self, ui_wants_input: bool) {
-    if ui_wants_input && self.allow_ui_to_capture_keyboard {
+    if ui_wants_input && self.should_capture_keyboard {
       return;
     }
 
@@ -115,7 +118,7 @@ impl Editor {
     };
 
     if key_pressed == KeyCode::Backspace {
-      self.try_despawn_entity_under_cursor()
+      self.try_despawn_selected_entity()
     }
 
     let dir = match key_pressed {
@@ -135,7 +138,7 @@ impl Editor {
     cell_entities.last().copied()
   }
 
-  fn try_despawn_entity_under_cursor(&mut self) {
+  fn try_despawn_selected_entity(&mut self) {
     if let Some(entity) = self.selected_entity {
       let _ = self.world_grid.despawn_entity(entity);
 
@@ -190,6 +193,10 @@ impl Editor {
     });
 
     self.draw_asset_param_ui(ui);
+
+    if self.selected_entity.is_some() && ui.button("Despawn entity").clicked() {
+      self.try_despawn_selected_entity();
+    }
 
     ui.separator();
 
@@ -291,18 +298,7 @@ impl Editor {
     ui: &mut egui::Ui,
     f: impl Fn(&mut Self) -> Option<hecs::Entity>,
   ) -> Option<hecs::Entity> {
-    ui.horizontal(|ui| {
-      if ui.button("Spawn").clicked() {
-        return f(self);
-      }
-
-      if self.selected_entity.is_some() && ui.button("Despawn entity").clicked() {
-        self.try_despawn_entity_under_cursor();
-      }
-
-      None
-    })
-    .inner
+    if ui.button("Spawn entity").clicked() { f(self) } else { None }
   }
 }
 

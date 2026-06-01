@@ -81,6 +81,7 @@ impl AssetManager {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
   pub animation_speed_multiplier: f32,
+  pub ui_scale_factor: f32,
   pub show_frames_per_second: bool,
   #[serde(skip)]
   settings_file_path: PathBuf,
@@ -90,6 +91,7 @@ impl Default for Settings {
   fn default() -> Self {
     Self {
       animation_speed_multiplier: 1.0,
+      ui_scale_factor: 1.25,
       show_frames_per_second: false,
       settings_file_path: Default::default(),
     }

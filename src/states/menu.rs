@@ -107,7 +107,7 @@ impl Menu {
           egui::Slider::new(&mut settings.animation_speed_multiplier, 1.0..=5.0)
             .text("Animation speed multiplier"),
         );
-
+        ui.add(egui::Slider::new(&mut settings.ui_scale_factor, 1.0..=3.0).text("UI scale factor"));
         ui.checkbox(&mut settings.show_frames_per_second, "Show FPS");
 
         if ui.button("Save").clicked() {

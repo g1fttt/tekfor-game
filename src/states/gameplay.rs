@@ -112,7 +112,6 @@ impl Gameplay {
     // * Враги
     // * И т.д.
 
-    update_death_causers(&mut self.world_grid);
     update_tickable(&mut self.world_grid);
     update_death_causers(&mut self.world_grid);
   }

@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
       ui_wants_pointer_input = egui_ctx.wants_pointer_input();
       ui_wants_keyboard_input = egui_ctx.wants_keyboard_input();
 
-      egui_ctx.set_pixels_per_point(screen_dpi_scale() + 0.5);
+      egui_ctx.set_pixels_per_point(screen_dpi_scale() * Settings::get().ui_scale_factor);
 
       draw_ui(&mut current_state, &lua, egui_ctx);
     });
