@@ -311,17 +311,21 @@ impl WorldGrid {
     ))
   }
 
-  pub fn spawn_door_at(&mut self, pos: UVec2, is_open: bool) -> hecs::Entity {
-    self.spawn_entity((
+  pub fn spawn_door_at(&mut self, pos: UVec2, is_locked: bool) -> hecs::Entity {
+    let entity = self.spawn_entity((
       StatefulObjectKind::Door,
-      Sprite(if is_open { AssetID::DoorOpen } else { AssetID::DoorClosed }),
+      Sprite(if is_locked { AssetID::DoorLocked } else { AssetID::DoorUnlocked }),
       OnGrid,
-      Closed,
       Solid,
       Obstacle,
       Position(pos),
       Interactable { linked_entity: None, handler_kind: InteractableHandlerKind::Door },
-    ))
+    ));
+
+    if is_locked {
+      let _ = self.world.insert_one(entity, Locked);
+    }
+    entity
   }
 
   pub fn despawn_entity(&mut self, entity: hecs::Entity) -> Result<(), hecs::NoSuchEntity> {

@@ -105,9 +105,9 @@ pub fn pressure_plate_handler(
   };
 
   if is_anything_standing_on_plate {
-    let _ = world_grid.remove::<(Closed, Solid)>(linked_entity);
+    let _ = world_grid.remove_one::<Locked>(linked_entity);
   } else {
-    let _ = world_grid.insert(linked_entity, (Closed, Solid));
+    let _ = world_grid.insert_one(linked_entity, Locked);
   }
 }
 
@@ -116,11 +116,7 @@ pub fn door_handler(
   this_entity: hecs::Entity,
   _: Option<hecs::Entity>,
 ) {
-  if let Err(hecs::ComponentError::MissingComponent(_)) =
-    world_grid.remove::<(Closed, Obstacle)>(this_entity)
-  {
-    world_grid.insert(this_entity, (Closed, Obstacle)).unwrap();
-  }
+  let _ = world_grid.despawn_entity(this_entity);
 }
 
 pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity, _: Option<hecs::Entity>) {

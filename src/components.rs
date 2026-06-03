@@ -155,7 +155,7 @@ pub struct Tickable(pub Interactable);
 pub struct Facing(pub Direction);
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub struct Closed;
+pub struct Locked;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Movable;

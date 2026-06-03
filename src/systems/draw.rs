@@ -34,9 +34,9 @@ pub fn update_sprites(world: &hecs::World) {
     world.query::<(&StatefulObjectKind, &mut Sprite, hecs::Entity)>();
 
   for (kind, sprite, entity) in stateful_sprited_objects.iter() {
-    let asset_id = match (kind, world.satisfies::<&Closed>(entity)) {
-      (StatefulObjectKind::Door, true) => AssetID::DoorClosed,
-      (StatefulObjectKind::Door, false) => AssetID::DoorOpen,
+    let asset_id = match (kind, world.satisfies::<&Locked>(entity)) {
+      (StatefulObjectKind::Door, true) => AssetID::DoorLocked,
+      (StatefulObjectKind::Door, false) => AssetID::DoorUnlocked,
     };
 
     *sprite = Sprite(asset_id);

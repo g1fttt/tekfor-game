@@ -255,11 +255,8 @@ impl Editor {
       AssetID::Player => self.draw_plain_asset_ui(ui, |this| {
         Some(this.world_grid.spawn_player_at(this.cursor_pos))
       }),
-      AssetID::DoorClosed => self.draw_plain_asset_ui(ui, |this| {
-        Some(this.world_grid.spawn_door_at(this.cursor_pos, false))
-      }),
-      AssetID::DoorOpen => self.draw_plain_asset_ui(ui, |this| {
-        Some(this.world_grid.spawn_door_at(this.cursor_pos, true))
+      door_asset_id @ (AssetID::DoorLocked | AssetID::DoorUnlocked) => self.draw_plain_asset_ui(ui, |this| {
+        Some(this.world_grid.spawn_door_at(this.cursor_pos, door_asset_id == AssetID::DoorLocked))
       }),
       AssetID::PressurePlate => self.draw_pressure_plate_ui(ui),
       AssetID::Saw => self.draw_saw_ui(ui),

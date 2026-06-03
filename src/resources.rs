@@ -15,8 +15,8 @@ use std::{env, fs, io};
 #[derive(Serialize, Deserialize, IntoStaticStr, EnumIter, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AssetID {
   Player,
-  DoorClosed,
-  DoorOpen,
+  DoorLocked,
+  DoorUnlocked,
   WallHorizontal,
   WallHorizontalLeftEdge,
   WallHorizontalRightEdge,
@@ -48,8 +48,8 @@ impl AssetManager {
     let mut textures = HashMap::new();
 
     textures.insert(AssetID::Player, load_texture("textures/player.png").await?);
-    textures.insert(AssetID::DoorClosed, load_texture("textures/door-closed.png").await?);
-    textures.insert(AssetID::DoorOpen, load_texture("textures/door-open.png").await?);
+    textures.insert(AssetID::DoorLocked, load_texture("textures/door-locked.png").await?);
+    textures.insert(AssetID::DoorUnlocked, load_texture("textures/door-unlocked.png").await?);
     textures.insert(AssetID::WallHorizontal, load_texture("textures/wall-horizontal.png").await?);
     textures.insert(AssetID::WallHorizontalLeftEdge, load_texture("textures/wall-horizontal-left-edge.png").await?);
     textures.insert(AssetID::WallHorizontalRightEdge, load_texture("textures/wall-horizontal-right-edge.png").await?);
