@@ -116,22 +116,26 @@ impl Grid {
     let new_capacity = (new_width * new_height) as usize;
     let old_capacity = self.cells.capacity();
 
-    match new_capacity.overflowing_sub(old_capacity) {
-      (to_alloc, false) => {
+    if new_capacity == old_capacity {
+      return;
+    }
+
+    match new_capacity.checked_sub(old_capacity) {
+      Some(to_alloc) => {
         self.cells.reserve(to_alloc);
 
         for _ in 0..to_alloc {
           self.cells.push(Vec::with_capacity(1));
         }
       }
-      (_, true) => {
+      None => {
         let to_trunc = old_capacity - new_capacity;
 
         self.cells.truncate(to_trunc);
         // NOTE: Возможно этот вызов избыточен.
         self.cells.shrink_to_fit();
       }
-    };
+    }
 
     self.width = new_width;
     self.height = new_height;

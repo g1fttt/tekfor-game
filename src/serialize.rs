@@ -3,37 +3,60 @@ use crate::components::*;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
 
-pub fn serialize_world_info(info: &mut WorldInfo, world: &hecs::World) -> bincode::Result<Vec<u8>> {
-  let mut serializer =
-    bincode::Serializer::new(&mut info.world_bytes, bincode::DefaultOptions::new());
+use rmp_serde::decode::Error as DecodeError;
+use rmp_serde::encode::Error as EncodeError;
+
+pub fn serialize_world_info(info: &WorldInfo, world: &hecs::World) -> Result<Vec<u8>, EncodeError> {
+  let mut full_info = WorldInfoFull::new(info.clone());
+
+  let mut serializer = rmp_serde::Serializer::new(&mut full_info.world_bytes);
   hecs::serialize::column::serialize(world, &mut WorldContextSerialize, &mut serializer)?;
 
-  bincode::serialize(&info)
+  rmp_serde::to_vec_named(&full_info)
 }
 
-pub fn deserialize_world_info(bytes: &[u8]) -> bincode::Result<(WorldInfo, hecs::World)> {
-  let info: WorldInfo = bincode::deserialize(bytes)?;
+pub fn deserialize_world_info(bytes: &[u8]) -> Result<(WorldInfo, hecs::World), DecodeError> {
+  let full_info: WorldInfoFull = rmp_serde::from_slice(bytes)?;
 
-  let mut deserializer =
-    bincode::Deserializer::with_reader(&*info.world_bytes, bincode::DefaultOptions::new());
+  let mut deserializer = rmp_serde::Deserializer::new(full_info.world_bytes.as_slice());
   let world = hecs::serialize::column::deserialize(
     &mut WorldContextDeserialize::default(),
     &mut deserializer,
   )?;
 
+  let info = WorldInfo::from(full_info);
+
   Ok((info, world))
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct WorldInfo {
   pub width: u32,
   pub height: u32,
-  world_bytes: Vec<u8>,
 }
 
 impl WorldInfo {
   pub fn new(width: u32, height: u32) -> Self {
-    Self { width, height, world_bytes: Vec::new() }
+    Self { width, height }
+  }
+}
+
+impl From<WorldInfoFull> for WorldInfo {
+  fn from(full: WorldInfoFull) -> Self {
+    Self::new(full.info.width, full.info.height)
+  }
+}
+
+#[derive(Serialize, Deserialize)]
+struct WorldInfoFull {
+  #[serde(flatten)]
+  info: WorldInfo,
+  world_bytes: Vec<u8>,
+}
+
+impl WorldInfoFull {
+  fn new(info: WorldInfo) -> Self {
+    Self { info, world_bytes: Vec::new() }
   }
 }
 

@@ -74,7 +74,7 @@ impl Editor {
           self.should_capture_keyboard = resp.clicked() || resp.changed();
 
           if ui.button("Save").clicked() {
-            let bytes = serialize_world_info(&mut self.world_info, &self.world_grid)?;
+            let bytes = serialize_world_info(&self.world_info, &self.world_grid)?;
 
             fs::write(&self.level_path, bytes)?;
           }
