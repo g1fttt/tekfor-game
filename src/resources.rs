@@ -37,6 +37,7 @@ pub enum SpriteID {
   WallVerticalTopEdge,
   WallVerticalBottomEdge,
   DownstairsHorizontalUpper,
+  Ground,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -95,6 +96,7 @@ impl AssetManager {
     textures.insert(SpriteID::WallVerticalTopEdge, load_texture("textures/wall-vertical-top-edge.png").await?);
     textures.insert(SpriteID::WallVerticalBottomEdge, load_texture("textures/wall-vertical-bottom-edge.png").await?);
     textures.insert(SpriteID::DownstairsHorizontalUpper, load_texture("textures/downstairs-horizontal-upper.png").await?);
+    textures.insert(SpriteID::Ground, load_texture("textures/ground.png").await?);
 
     Ok(textures)
   }
