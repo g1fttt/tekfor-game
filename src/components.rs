@@ -4,9 +4,10 @@ use crate::{Direction, WorldGrid};
 
 use macroquad::math::{UVec2, Vec2};
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
-
 use strum::{EnumIter, IntoStaticStr};
+
+use std::collections::VecDeque;
+use std::sync::Arc;
 
 macro_rules! deref_component {
   ($from:ty, $into:ty) => {
@@ -72,7 +73,6 @@ impl Animation {
 #[derive(Serialize, Deserialize, Clone)]
 pub enum ActionKind {
   Move(MoveOptions),
-  Interact(Direction),
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -118,8 +118,7 @@ pub struct Bouncing {
   pub to: Direction,
 }
 
-type InteractableHandler =
-  fn(&mut WorldGrid, this_entity: hecs::Entity, linked_entity: Option<hecs::Entity>);
+type InteractableHandler = fn(&mut WorldGrid, this_entity: hecs::Entity);
 
 #[derive(EnumIter, IntoStaticStr, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum InteractableHandlerKind {
@@ -144,14 +143,34 @@ impl InteractableHandlerKind {
   }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Interactable {
-  pub linked_entity: Option<hecs::Entity>,
-  pub handler_kind: InteractableHandlerKind,
+#[derive(Serialize, Deserialize)]
+pub struct LinkedEntities(Arc<Vec<hecs::Entity>>);
+
+impl LinkedEntities {
+  pub fn new(entities: Vec<hecs::Entity>) -> Self {
+    Self(Arc::new(entities))
+  }
+
+  pub fn strong_clone(&self) -> Arc<Vec<hecs::Entity>> {
+    Arc::clone(self)
+  }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Interactable(pub InteractableHandlerKind);
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Tickable(pub Interactable);
+
+impl Tickable {
+  pub fn new(handler_kind: InteractableHandlerKind) -> Self {
+    Self(Interactable(handler_kind))
+  }
+
+  pub fn handler(self) -> InteractableHandlerKind {
+    self.into_inner().0
+  }
+}
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub struct Facing(pub Direction);
@@ -195,3 +214,4 @@ deref_component!(Sprite, SpriteID);
 deref_component!(ActionQueue, VecDeque<ActionKind>);
 deref_component!(Tickable, Interactable);
 deref_component!(Facing, Direction);
+deref_component!(LinkedEntities, Arc<Vec<hecs::Entity>>);

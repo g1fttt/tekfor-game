@@ -160,6 +160,10 @@ impl Grid {
     self.height
   }
 
+  pub fn get_cell_owned(&self, x: u32, y: u32) -> Option<Vec<hecs::Entity>> {
+    self.get_cell(x, y).map(|cell| cell.to_owned())
+  }
+
   pub fn get_cell(&self, x: u32, y: u32) -> Option<&[hecs::Entity]> {
     self.index(x, y).map(|idx| self.cells[idx].as_slice())
   }
@@ -229,16 +233,17 @@ impl WorldGrid {
     entity
   }
 
+  pub fn spawn_ground_at(&mut self, pos: UVec2) -> hecs::Entity {
+    self.spawn_entity((Sprite(SpriteID::Ground), OnGrid, Position(pos)))
+  }
+
   pub fn spawn_downstairs_at(&mut self, pos: UVec2, id: SpriteID) -> hecs::Entity {
     self.spawn_entity((
       Sprite(id),
       Downstairs,
       OnGrid,
       Position(pos),
-      Tickable(Interactable {
-        linked_entity: None,
-        handler_kind: InteractableHandlerKind::Downstairs,
-      }),
+      Tickable::new(InteractableHandlerKind::Downstairs),
     ))
   }
 
@@ -252,7 +257,7 @@ impl WorldGrid {
       Position(pos),
       ActionQueue::default(),
       Bouncing { from, to },
-      Tickable(Interactable { linked_entity: None, handler_kind: InteractableHandlerKind::Saw }),
+      Tickable::new(InteractableHandlerKind::Saw),
     ))
   }
 
@@ -296,10 +301,7 @@ impl WorldGrid {
       Position(pos),
       ActionQueue::default(),
       Facing(dir),
-      Tickable(Interactable {
-        linked_entity: None,
-        handler_kind: InteractableHandlerKind::Fireball,
-      }),
+      Tickable::new(InteractableHandlerKind::Fireball),
     ))
   }
 
@@ -309,27 +311,26 @@ impl WorldGrid {
       OnGrid,
       Position(pos),
       Facing(dir),
-      Tickable(Interactable {
-        linked_entity: None,
-        handler_kind: InteractableHandlerKind::FireballThrower,
-      }),
+      Tickable::new(InteractableHandlerKind::FireballThrower),
     ))
   }
 
   pub fn spawn_pressure_plate(
     &mut self,
     pos: UVec2,
-    linked_entity: Option<hecs::Entity>,
+    linked_entities: Option<Vec<hecs::Entity>>,
   ) -> hecs::Entity {
-    self.spawn_entity((
+    let entity = self.spawn_entity((
       Sprite(SpriteID::PressurePlate),
       OnGrid,
       Position(pos),
-      Tickable(Interactable {
-        linked_entity,
-        handler_kind: InteractableHandlerKind::PressurePlate,
-      }),
-    ))
+      Tickable::new(InteractableHandlerKind::PressurePlate),
+    ));
+
+    if let Some(entities) = linked_entities {
+      let _ = self.world.insert_one(entity, LinkedEntities::new(entities));
+    }
+    entity
   }
 
   pub fn spawn_door_at(&mut self, pos: UVec2, is_locked: bool) -> hecs::Entity {
@@ -339,7 +340,7 @@ impl WorldGrid {
       OnGrid,
       Obstacle,
       Position(pos),
-      Interactable { linked_entity: None, handler_kind: InteractableHandlerKind::Door },
+      Interactable(InteractableHandlerKind::Door),
     ));
 
     if is_locked {
@@ -361,22 +362,25 @@ impl WorldGrid {
     Some(cell_entities.iter().any(|&ent| self.world.satisfies::<Q>(ent)))
   }
 
-  fn try_push_entities_if_any(&mut self, x: u32, y: u32, dir: Direction) {
-    let Some(cell_entities) = self.grid.get_cell(x, y) else {
-      return;
-    };
+  fn push_entities(&mut self, entities: &[hecs::Entity], dir: Direction) {
+    for &entity in entities.iter() {
+      if !self.world.satisfies::<(&Movable, &Pushable)>(entity) {
+        continue;
+      }
 
-    let pushable_entities: Vec<hecs::Entity> = cell_entities
-      .iter()
-      .filter(|&&ent| self.world.satisfies::<(&Movable, &Pushable)>(ent))
-      .cloned()
-      .collect();
-
-    if pushable_entities.is_empty() {
-      return;
+      self.move_entity(entity, MoveOptions::new(dir));
     }
+  }
 
-    pushable_entities.into_iter().for_each(|ent| self.move_entity(ent, MoveOptions::new(dir)));
+  fn interact_with_entities(&mut self, entities: &[hecs::Entity]) {
+    for &entity in entities.iter() {
+      let Ok(handler) = self.world.get::<&InteractableHandlerKind>(entity).map(|h| h.to_fn())
+      else {
+        continue;
+      };
+
+      handler(self, entity);
+    }
   }
 
   fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) {
@@ -392,37 +396,18 @@ impl WorldGrid {
       return;
     };
 
+    let Some(cell_entities) = self.grid.get_cell_owned(new_pos.x, new_pos.y) else {
+      return;
+    };
+
+    self.interact_with_entities(&cell_entities);
+
     if opts.can_push {
-      self.try_push_entities_if_any(new_pos.x, new_pos.y, opts.dir);
+      self.push_entities(&cell_entities, opts.dir);
     }
 
     if !self.move_entity_to_pos(entity, new_pos.x, new_pos.y) && opts.despawn_if_collided {
       let _ = self.despawn_entity(entity);
-    }
-  }
-
-  fn interact(&mut self, entity: hecs::Entity, dir: Direction) {
-    let Ok(pos) = self.world.get::<&Position>(entity).map(|pos| pos.into_inner()) else {
-      return;
-    };
-
-    let target_pos = utils::advance_pos_in_direction(pos, dir);
-
-    let Some(cell_entities) = self.grid.get_cell(target_pos.x, target_pos.y) else {
-      return;
-    };
-
-    let interactable_entities: Vec<(InteractableHandlerKind, _, _)> = cell_entities
-      .iter()
-      .filter_map(|&entity| {
-        let interactable = self.world.get::<&Interactable>(entity).ok()?;
-
-        Some((interactable.handler_kind, entity, interactable.linked_entity))
-      })
-      .collect();
-
-    for (handler_kind, entity, linked_entity) in interactable_entities {
-      handler_kind.to_fn()(self, entity, linked_entity);
     }
   }
 

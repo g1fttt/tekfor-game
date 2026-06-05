@@ -1,3 +1,4 @@
+use crate::components::*;
 use crate::resources::SpriteID;
 use crate::serialize::*;
 use crate::states::menu::Menu;
@@ -180,16 +181,11 @@ impl Editor {
 
     egui::ComboBox::from_label("Current entity").selected_text(selected_text).show_ui(ui, |ui| {
       for &entity in cell_entities {
-        let Some(text) = utils::entity_sprite_text(&self.world_grid, entity) else {
+        let Some(sprite_text) = utils::entity_sprite_text(&self.world_grid, entity) else {
           continue;
         };
 
-        let entity_mut_ref = match self.is_in_linkage_mode {
-          true => &mut self.entity_info.linked_entity,
-          false => &mut self.selected_entity,
-        };
-
-        ui.selectable_value(entity_mut_ref, Some(entity), text);
+        ui.selectable_value(&mut self.selected_entity, Some(entity), sprite_text);
       }
     });
   }
@@ -214,6 +210,43 @@ impl Editor {
     ui.separator();
 
     ui.checkbox(&mut self.is_in_linkage_mode, "Linkage mode");
+
+    ui.separator();
+
+    ui.label("Linked entities:");
+
+    egui::ScrollArea::vertical().show(ui, |ui| {
+      for &entity in self.entity_info.linked_entities.iter() {
+        let Some(sprite_text) = utils::entity_sprite_text(&self.world_grid, entity) else {
+          continue;
+        };
+
+        let Ok(pos) = self.world_grid.get::<&Position>(entity).map(|pos| pos.into_inner()) else {
+          continue;
+        };
+
+        ui.label(format!("{} (x: {}, y: {})", sprite_text, pos.x, pos.y));
+      }
+    });
+
+    let has_linked_entities = !self.entity_info.linked_entities.is_empty();
+
+    if self.is_in_linkage_mode || has_linked_entities {
+      ui.separator();
+    }
+
+    ui.horizontal(|ui| {
+      if let Some(entity) = self.selected_entity
+        && self.is_in_linkage_mode
+        && ui.button("Link").clicked()
+      {
+        self.entity_info.linked_entities.push(entity);
+      }
+
+      if has_linked_entities && ui.button("Clear linked").clicked() {
+        self.entity_info.linked_entities.clear();
+      }
+    });
   }
 
   #[rustfmt::skip]
@@ -253,6 +286,9 @@ impl Editor {
       downstairs_sprite_id @ SpriteID::DownstairsHorizontalUpper => self.draw_plain_sprite_ui(ui, |this| {
         Some(this.world_grid.spawn_downstairs_at(this.cursor_pos, downstairs_sprite_id))
       }),
+      SpriteID::Ground => self.draw_plain_sprite_ui(ui, |this| {
+        Some(this.world_grid.spawn_ground_at(this.cursor_pos))
+      }),
       SpriteID::PressurePlate => self.draw_pressure_plate_ui(ui),
       SpriteID::Saw => self.draw_saw_ui(ui),
       SpriteID::Fireball => self.draw_fireball_ui(ui),
@@ -283,16 +319,10 @@ impl Editor {
   }
 
   fn draw_pressure_plate_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
-    let entity_text = self
-      .entity_info
-      .linked_entity
-      .and_then(|entity| utils::entity_sprite_text(&self.world_grid, entity))
-      .unwrap_or("None");
-
-    ui.label(format!("Linked entity: {}", entity_text));
-
     self.draw_plain_sprite_ui(ui, |this| {
-      Some(this.world_grid.spawn_pressure_plate(this.cursor_pos, this.entity_info.linked_entity))
+      let linked_entities = this.entity_info.linked_entities.clone();
+
+      Some(this.world_grid.spawn_pressure_plate(this.cursor_pos, Some(linked_entities)))
     })
   }
 
@@ -353,7 +383,7 @@ where
 #[derive(Default)]
 pub struct EntityInfo {
   sprite_id: Option<SpriteID>,
-  linked_entity: Option<hecs::Entity>,
+  linked_entities: Vec<hecs::Entity>,
   direction_from: Option<Direction>,
   direction_to: Option<Direction>,
 }

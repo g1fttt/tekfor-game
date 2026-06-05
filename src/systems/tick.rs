@@ -2,14 +2,14 @@ use crate::components::*;
 use crate::{WorldGrid, utils};
 
 pub fn update_tickable(world_grid: &mut WorldGrid) {
-  let tickable: Vec<(InteractableHandlerKind, _, _)> = world_grid
+  let tickable: Vec<(InteractableHandlerKind, _)> = world_grid
     .query::<(&Tickable, hecs::Entity)>()
     .into_iter()
-    .map(|(tickable, entity)| (tickable.handler_kind, entity, tickable.linked_entity))
+    .map(|(tickable, entity)| (tickable.handler(), entity))
     .collect();
 
-  for (handler_kind, entity, linked_entity) in tickable {
-    handler_kind.to_fn()(world_grid, entity, linked_entity);
+  for (handler, entity) in tickable.into_iter() {
+    handler.to_fn()(world_grid, entity);
   }
 }
 
@@ -38,11 +38,7 @@ pub fn mark_went_downstairs(world_grid: &WorldGrid, to_despawn: &mut Vec<hecs::E
   );
 }
 
-pub fn fireball_handler(
-  world_grid: &mut WorldGrid,
-  this_entity: hecs::Entity,
-  _: Option<hecs::Entity>,
-) {
+pub fn fireball_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
   let Ok((queue, dir)) = world_grid
     .query_one_mut::<(&mut ActionQueue, &Facing)>(this_entity)
     .map(|(queue, facing)| (queue, facing.into_inner()))
@@ -59,11 +55,7 @@ pub fn fireball_handler(
   }));
 }
 
-pub fn fireball_thrower_handler(
-  world_grid: &mut WorldGrid,
-  this_entity: hecs::Entity,
-  _: Option<hecs::Entity>,
-) {
+pub fn fireball_thrower_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
   let Ok((this_pos, facing_dir)) = world_grid
     .query_one::<(&Position, &Facing)>(this_entity)
     .get()
@@ -88,11 +80,7 @@ pub fn fireball_thrower_handler(
   }
 }
 
-pub fn pressure_plate_handler(
-  world_grid: &mut WorldGrid,
-  this_entity: hecs::Entity,
-  linked_entity: Option<hecs::Entity>,
-) {
+pub fn pressure_plate_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
   let Ok(this_pos) = world_grid.get::<&Position>(this_entity).map(|pos| pos.into_inner()) else {
     return;
   };
@@ -105,26 +93,26 @@ pub fn pressure_plate_handler(
     .iter()
     .any(|&entity| world_grid.satisfies::<&Solid>(entity) && entity != this_entity);
 
-  let Some(linked_entity) = linked_entity else {
+  let Ok(linked_entities) =
+    world_grid.get::<&LinkedEntities>(this_entity).map(|le| le.strong_clone())
+  else {
     return;
   };
 
-  if is_anything_standing_on_plate {
-    let _ = world_grid.remove_one::<Locked>(linked_entity);
-  } else {
-    let _ = world_grid.insert_one(linked_entity, Locked);
+  for &entity in linked_entities.iter() {
+    if is_anything_standing_on_plate {
+      let _ = world_grid.remove_one::<Locked>(entity);
+    } else {
+      let _ = world_grid.insert_one(entity, Locked);
+    }
   }
 }
 
-pub fn door_handler(
-  world_grid: &mut WorldGrid,
-  this_entity: hecs::Entity,
-  _: Option<hecs::Entity>,
-) {
+pub fn door_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
   let _ = world_grid.despawn_entity(this_entity);
 }
 
-pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity, _: Option<hecs::Entity>) {
+pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
   let Ok((this_pos, bouncing_to)) = world_grid
     .query_one_mut::<(&Position, &Bouncing)>(this_entity)
     .map(|(pos, b)| (pos.into_inner(), b.to))
@@ -153,11 +141,7 @@ pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity, _: Opt
   }
 }
 
-pub fn downstairs_handler(
-  world_grid: &mut WorldGrid,
-  this_entity: hecs::Entity,
-  _: Option<hecs::Entity>,
-) {
+pub fn downstairs_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
   let Some(cell_entities) = world_grid
     .get::<&Position>(this_entity)
     .ok()

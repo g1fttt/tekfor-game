@@ -255,7 +255,6 @@ impl Gameplay {
     for (action_kind, entity) in actions {
       match action_kind {
         ActionKind::Move(opts) => self.world_grid.move_entity(entity, opts),
-        ActionKind::Interact(dir) => self.world_grid.interact(entity, dir),
       }
     }
     true
