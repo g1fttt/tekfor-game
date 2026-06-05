@@ -1,0 +1,17 @@
+name: CI — macOS & Windows Rust
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  macos:
+    uses: ./.github/workflows/reusable-rust.yml
+    with:
+      target: macos-latest
+
+  windows:
+    uses: ./.github/workflows/reusable-rust.yml
+    with:
+      target: windows-latest
