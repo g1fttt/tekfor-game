@@ -1,10 +1,12 @@
 use egui_macroquad::egui;
-use macroquad::prelude::*;
 use mlua::Lua;
 
 use tekfor_game::resources::Settings;
 use tekfor_game::scripting;
 use tekfor_game::{Game, GameState};
+
+use macroquad::miniquad::conf::{AppleGfxApi, Platform};
+use macroquad::prelude::*;
 
 // Набор звуков:         https://ci.itch.io/400-sounds-pack
 //                       https://nihil-existentia.itch.io/free-audio-asset-collection
@@ -58,6 +60,7 @@ fn window_conf() -> Conf {
     window_title: String::from("Tekfor game"),
     high_dpi: true,
     fullscreen: true,
+    platform: Platform { apple_gfx_api: AppleGfxApi::OpenGl, ..Default::default() },
     ..Default::default()
   }
 }

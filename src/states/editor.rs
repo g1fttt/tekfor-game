@@ -1,4 +1,4 @@
-use crate::resources::AssetID;
+use crate::resources::SpriteID;
 use crate::serialize::*;
 use crate::states::menu::Menu;
 use crate::systems::draw::draw_sprites;
@@ -18,13 +18,9 @@ pub struct Editor {
   world_info: WorldInfo,
   cursor_pos: UVec2,
   selected_entity: Option<hecs::Entity>,
-  asset_id: Option<AssetID>,
   should_capture_keyboard: bool,
   is_in_linkage_mode: bool,
-
-  linked_entity: Option<hecs::Entity>,
-  direction_from: Option<Direction>,
-  direction_to: Option<Direction>,
+  entity_info: EntityInfo,
 }
 
 impl Editor {
@@ -35,18 +31,14 @@ impl Editor {
       world_info: WorldInfo::default(),
       cursor_pos: UVec2::ZERO,
       selected_entity: None,
-      asset_id: None,
       should_capture_keyboard: false,
       is_in_linkage_mode: false,
-
-      linked_entity: None,
-      direction_from: None,
-      direction_to: None,
+      entity_info: EntityInfo::default(),
     }
   }
 
   pub fn draw(&self, state: &Game) {
-    state.with_camera(|state| {
+    state.with_camera(None, |state| {
       draw_sprites(&self.world_grid, &state.asset_manager);
 
       self.draw_cursor();
@@ -111,7 +103,7 @@ impl Editor {
 
         if is_in_bounds {
           self.draw_current_entity_ui(ui);
-          self.draw_asset_ui(ui);
+          self.draw_sprite_ui(ui);
 
           ui.separator();
         }
@@ -193,7 +185,7 @@ impl Editor {
         };
 
         let entity_mut_ref = match self.is_in_linkage_mode {
-          true => &mut self.linked_entity,
+          true => &mut self.entity_info.linked_entity,
           false => &mut self.selected_entity,
         };
 
@@ -202,18 +194,18 @@ impl Editor {
     });
   }
 
-  fn draw_asset_ui(&mut self, ui: &mut egui::Ui) {
-    let selected_text: &'static str = self.asset_id.map(Into::into).unwrap_or("...");
+  fn draw_sprite_ui(&mut self, ui: &mut egui::Ui) {
+    let selected_text: &'static str = self.entity_info.sprite_id.map(Into::into).unwrap_or("...");
 
     egui::ComboBox::from_label("Asset").selected_text(selected_text).show_ui(ui, |ui| {
-      for asset_id in AssetID::iter() {
-        let text: &'static str = asset_id.into();
+      for sprite_id in SpriteID::iter() {
+        let text: &'static str = sprite_id.into();
 
-        ui.selectable_value(&mut self.asset_id, Some(asset_id), text);
+        ui.selectable_value(&mut self.entity_info.sprite_id, Some(sprite_id), text);
       }
     });
 
-    self.draw_asset_param_ui(ui);
+    self.draw_sprite_param_ui(ui);
 
     if self.selected_entity.is_some() && ui.button("Despawn entity").clicked() {
       self.try_despawn_selected_entity();
@@ -225,46 +217,46 @@ impl Editor {
   }
 
   #[rustfmt::skip]
-  fn draw_asset_param_ui(&mut self, ui: &mut egui::Ui) {
-    let Some(asset_id) = self.asset_id else {
+  fn draw_sprite_param_ui(&mut self, ui: &mut egui::Ui) {
+    let Some(sprite_id) = self.entity_info.sprite_id else {
       return;
     };
 
     ui.separator();
 
-    let spawned_entity = match asset_id {
-      wall_asset_id @ (AssetID::WallHorizontal
-      | AssetID::WallHorizontalLeftEdge
-      | AssetID::WallHorizontalRightEdge
-      | AssetID::WallLeftLowerCorner
-      | AssetID::WallLeftUpperCorner
-      | AssetID::WallRightLowerCorner
-      | AssetID::WallRightUpperCorner
-      | AssetID::WallVertical
-      | AssetID::WallVerticalLeftSplit
-      | AssetID::WallVerticalRightSplit
-      | AssetID::WallHorizontalUpperSplit
-      | AssetID::WallHorizontalLowerSplit
-      | AssetID::WallVerticalTopEdge
-      | AssetID::WallVerticalBottomEdge) => self.draw_plain_asset_ui(ui, |this| {
-        Some(this.world_grid.spawn_wall_at(this.cursor_pos, wall_asset_id))
+    let spawned_entity = match sprite_id {
+      wall_sprite_id @ (SpriteID::WallHorizontal
+      | SpriteID::WallHorizontalLeftEdge
+      | SpriteID::WallHorizontalRightEdge
+      | SpriteID::WallLeftLowerCorner
+      | SpriteID::WallLeftUpperCorner
+      | SpriteID::WallRightLowerCorner
+      | SpriteID::WallRightUpperCorner
+      | SpriteID::WallVertical
+      | SpriteID::WallVerticalLeftSplit
+      | SpriteID::WallVerticalRightSplit
+      | SpriteID::WallHorizontalUpperSplit
+      | SpriteID::WallHorizontalLowerSplit
+      | SpriteID::WallVerticalTopEdge
+      | SpriteID::WallVerticalBottomEdge) => self.draw_plain_sprite_ui(ui, |this| {
+        Some(this.world_grid.spawn_wall_at(this.cursor_pos, wall_sprite_id))
       }),
-      AssetID::Crate => self.draw_plain_asset_ui(ui, |this| {
+      SpriteID::Crate => self.draw_plain_sprite_ui(ui, |this| {
         Some(this.world_grid.spawn_crate_at(this.cursor_pos))
       }),
-      AssetID::Player => self.draw_plain_asset_ui(ui, |this| {
+      SpriteID::Player => self.draw_plain_sprite_ui(ui, |this| {
         Some(this.world_grid.spawn_player_at(this.cursor_pos))
       }),
-      door_asset_id @ (AssetID::DoorLocked | AssetID::DoorUnlocked) => self.draw_plain_asset_ui(ui, |this| {
-        Some(this.world_grid.spawn_door_at(this.cursor_pos, door_asset_id == AssetID::DoorLocked))
+      door_sprite_id @ (SpriteID::DoorLocked | SpriteID::DoorUnlocked) => self.draw_plain_sprite_ui(ui, |this| {
+        Some(this.world_grid.spawn_door_at(this.cursor_pos, door_sprite_id == SpriteID::DoorLocked))
       }),
-      downstairs_asset_id @ AssetID::DownstairsHorizontalUpper => self.draw_plain_asset_ui(ui, |this| {
-        Some(this.world_grid.spawn_downstairs_at(this.cursor_pos, downstairs_asset_id))
+      downstairs_sprite_id @ SpriteID::DownstairsHorizontalUpper => self.draw_plain_sprite_ui(ui, |this| {
+        Some(this.world_grid.spawn_downstairs_at(this.cursor_pos, downstairs_sprite_id))
       }),
-      AssetID::PressurePlate => self.draw_pressure_plate_ui(ui),
-      AssetID::Saw => self.draw_saw_ui(ui),
-      AssetID::Fireball => self.draw_fireball_ui(ui),
-      AssetID::FireballThrower => self.draw_fireball_thrower_ui(ui),
+      SpriteID::PressurePlate => self.draw_pressure_plate_ui(ui),
+      SpriteID::Saw => self.draw_saw_ui(ui),
+      SpriteID::Fireball => self.draw_fireball_ui(ui),
+      SpriteID::FireballThrower => self.draw_fireball_thrower_ui(ui),
     };
 
     if let Some(entity) = spawned_entity {
@@ -273,53 +265,62 @@ impl Editor {
   }
 
   fn draw_fireball_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
-    draw_direction_ui("Direction", &mut self.direction_to, ui);
+    draw_direction_ui("Direction", &mut self.entity_info.direction_to, ui);
 
-    self.draw_plain_asset_ui(ui, |this| {
-      Some(this.world_grid.spawn_fireball_at(this.cursor_pos, this.direction_to?))
+    self.draw_plain_sprite_ui(ui, |this| {
+      Some(this.world_grid.spawn_fireball_at(this.cursor_pos, this.entity_info.direction_to?))
     })
   }
 
   fn draw_fireball_thrower_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
-    draw_direction_ui("Facing", &mut self.direction_to, ui);
+    draw_direction_ui("Facing", &mut self.entity_info.direction_to, ui);
 
-    self.draw_plain_asset_ui(ui, |this| {
-      Some(this.world_grid.spawn_fireball_thrower_at(this.cursor_pos, this.direction_to?))
+    self.draw_plain_sprite_ui(ui, |this| {
+      Some(
+        this.world_grid.spawn_fireball_thrower_at(this.cursor_pos, this.entity_info.direction_to?),
+      )
     })
   }
 
   fn draw_pressure_plate_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
     let entity_text = self
+      .entity_info
       .linked_entity
       .and_then(|entity| utils::entity_sprite_text(&self.world_grid, entity))
       .unwrap_or("None");
 
     ui.label(format!("Linked entity: {}", entity_text));
 
-    self.draw_plain_asset_ui(ui, |this| {
-      Some(this.world_grid.spawn_pressure_plate(this.cursor_pos, this.linked_entity))
+    self.draw_plain_sprite_ui(ui, |this| {
+      Some(this.world_grid.spawn_pressure_plate(this.cursor_pos, this.entity_info.linked_entity))
     })
   }
 
   fn draw_saw_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
     ui.horizontal(|ui| {
-      draw_direction_ui("From", &mut self.direction_from, ui);
-      draw_direction_ui("To", &mut self.direction_to, ui);
+      draw_direction_ui("From", &mut self.entity_info.direction_from, ui);
+      draw_direction_ui("To", &mut self.entity_info.direction_to, ui);
     });
 
-    self.draw_plain_asset_ui(ui, |this| {
-      let (from, to) = this.direction_from.zip(this.direction_to)?;
+    self.draw_plain_sprite_ui(ui, |this| {
+      let (from, to) = this.entity_info.direction_from.zip(this.entity_info.direction_to)?;
 
       Some(this.world_grid.spawn_saw_at(this.cursor_pos, from, to))
     })
   }
 
-  fn draw_plain_asset_ui(
+  fn draw_plain_sprite_ui(
     &mut self,
     ui: &mut egui::Ui,
     f: impl Fn(&mut Self) -> Option<hecs::Entity>,
   ) -> Option<hecs::Entity> {
     if ui.button("Spawn entity").clicked() { f(self) } else { None }
+  }
+}
+
+impl Default for Editor {
+  fn default() -> Self {
+    Self::new()
   }
 }
 
@@ -349,8 +350,10 @@ where
   .inner
 }
 
-impl Default for Editor {
-  fn default() -> Self {
-    Self::new()
-  }
+#[derive(Default)]
+pub struct EntityInfo {
+  sprite_id: Option<SpriteID>,
+  linked_entity: Option<hecs::Entity>,
+  direction_from: Option<Direction>,
+  direction_to: Option<Direction>,
 }

@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::{env, fs, io};
 
 #[derive(Serialize, Deserialize, IntoStaticStr, EnumIter, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AssetID {
+pub enum SpriteID {
   Player,
   DoorLocked,
   DoorUnlocked,
@@ -39,44 +39,88 @@ pub enum AssetID {
   DownstairsHorizontalUpper,
 }
 
+#[derive(PartialEq, Eq, Hash)]
+pub enum MaterialID {
+  CRT,
+}
+
+type Textures = HashMap<SpriteID, Texture2D>;
+type Materials = HashMap<MaterialID, Material>;
+
 pub struct AssetManager {
-  textures: HashMap<AssetID, Texture2D>,
+  textures: Textures,
+  materials: Materials,
 }
 
 impl AssetManager {
-  #[rustfmt::skip]
   pub async fn load_all() -> Result<Self, macroquad::Error> {
-    let mut textures = HashMap::new();
+    let textures = Self::load_textures().await?;
+    let materials = Self::load_materials()?;
 
-    textures.insert(AssetID::Player, load_texture("textures/player.png").await?);
-    textures.insert(AssetID::DoorLocked, load_texture("textures/door-locked.png").await?);
-    textures.insert(AssetID::DoorUnlocked, load_texture("textures/door-unlocked.png").await?);
-    textures.insert(AssetID::WallHorizontal, load_texture("textures/wall-horizontal.png").await?);
-    textures.insert(AssetID::WallHorizontalLeftEdge, load_texture("textures/wall-horizontal-left-edge.png").await?);
-    textures.insert(AssetID::WallHorizontalRightEdge, load_texture("textures/wall-horizontal-right-edge.png").await?);
-    textures.insert(AssetID::WallLeftLowerCorner, load_texture("textures/wall-left-lower-corner.png").await?);
-    textures.insert(AssetID::WallLeftUpperCorner, load_texture("textures/wall-left-upper-corner.png").await?);
-    textures.insert(AssetID::WallRightLowerCorner, load_texture("textures/wall-right-lower-corner.png").await?);
-    textures.insert(AssetID::WallRightUpperCorner, load_texture("textures/wall-right-upper-corner.png").await?);
-    textures.insert(AssetID::WallVertical, load_texture("textures/wall-vertical.png").await?);
-    textures.insert(AssetID::PressurePlate, load_texture("textures/pressure-plate.png").await?);
-    textures.insert(AssetID::Crate, load_texture("textures/crate.png").await?);
-    textures.insert(AssetID::Saw, load_texture("textures/saw.png").await?);
-    textures.insert(AssetID::Fireball, load_texture("textures/fireball.png").await?);
-    textures.insert(AssetID::FireballThrower, load_texture("textures/translucent.png").await?);
-    textures.insert(AssetID::WallVerticalLeftSplit, load_texture("textures/wall-vertical-left-split.png").await?);
-    textures.insert(AssetID::WallVerticalRightSplit, load_texture("textures/wall-vertical-right-split.png").await?);
-    textures.insert(AssetID::WallHorizontalUpperSplit, load_texture("textures/wall-horizontal-upper-split.png").await?);
-    textures.insert(AssetID::WallHorizontalLowerSplit, load_texture("textures/wall-horizontal-lower-split.png").await?);
-    textures.insert(AssetID::WallVerticalTopEdge, load_texture("textures/wall-vertical-top-edge.png").await?);
-    textures.insert(AssetID::WallVerticalBottomEdge, load_texture("textures/wall-vertical-bottom-edge.png").await?);
-    textures.insert(AssetID::DownstairsHorizontalUpper, load_texture("textures/downstairs-horizontal-upper.png").await?);
-
-    Ok(Self { textures })
+    Ok(Self { textures, materials })
   }
 
-  pub fn get(&self, id: AssetID) -> Texture2D {
-    self.textures.get(&id).expect("Failed to obtain texture due to unknown asset id").clone()
+  pub fn get_texture(&self, id: SpriteID) -> &Texture2D {
+    self.textures.get(&id).expect("Failed to obtain texture due to unknown asset id")
+  }
+
+  pub fn get_material(&self, id: MaterialID) -> &Material {
+    self.materials.get(&id).expect("Failed to obtain material due to unknown asset id")
+  }
+
+  #[rustfmt::skip]
+  async fn load_textures() -> Result<Textures, macroquad::Error> {
+    let mut textures = Textures::new();
+
+    textures.insert(SpriteID::Player, load_texture("textures/player.png").await?);
+    textures.insert(SpriteID::DoorLocked, load_texture("textures/door-locked.png").await?);
+    textures.insert(SpriteID::DoorUnlocked, load_texture("textures/door-unlocked.png").await?);
+    textures.insert(SpriteID::WallHorizontal, load_texture("textures/wall-horizontal.png").await?);
+    textures.insert(SpriteID::WallHorizontalLeftEdge, load_texture("textures/wall-horizontal-left-edge.png").await?);
+    textures.insert(SpriteID::WallHorizontalRightEdge, load_texture("textures/wall-horizontal-right-edge.png").await?);
+    textures.insert(SpriteID::WallLeftLowerCorner, load_texture("textures/wall-left-lower-corner.png").await?);
+    textures.insert(SpriteID::WallLeftUpperCorner, load_texture("textures/wall-left-upper-corner.png").await?);
+    textures.insert(SpriteID::WallRightLowerCorner, load_texture("textures/wall-right-lower-corner.png").await?);
+    textures.insert(SpriteID::WallRightUpperCorner, load_texture("textures/wall-right-upper-corner.png").await?);
+    textures.insert(SpriteID::WallVertical, load_texture("textures/wall-vertical.png").await?);
+    textures.insert(SpriteID::PressurePlate, load_texture("textures/pressure-plate.png").await?);
+    textures.insert(SpriteID::Crate, load_texture("textures/crate.png").await?);
+    textures.insert(SpriteID::Saw, load_texture("textures/saw.png").await?);
+    textures.insert(SpriteID::Fireball, load_texture("textures/fireball.png").await?);
+    textures.insert(SpriteID::FireballThrower, load_texture("textures/translucent.png").await?);
+    textures.insert(SpriteID::WallVerticalLeftSplit, load_texture("textures/wall-vertical-left-split.png").await?);
+    textures.insert(SpriteID::WallVerticalRightSplit, load_texture("textures/wall-vertical-right-split.png").await?);
+    textures.insert(SpriteID::WallHorizontalUpperSplit, load_texture("textures/wall-horizontal-upper-split.png").await?);
+    textures.insert(SpriteID::WallHorizontalLowerSplit, load_texture("textures/wall-horizontal-lower-split.png").await?);
+    textures.insert(SpriteID::WallVerticalTopEdge, load_texture("textures/wall-vertical-top-edge.png").await?);
+    textures.insert(SpriteID::WallVerticalBottomEdge, load_texture("textures/wall-vertical-bottom-edge.png").await?);
+    textures.insert(SpriteID::DownstairsHorizontalUpper, load_texture("textures/downstairs-horizontal-upper.png").await?);
+
+    Ok(textures)
+  }
+
+  fn load_materials() -> Result<Materials, macroquad::Error> {
+    let mut materials = Materials::new();
+
+    materials.insert(
+      MaterialID::CRT,
+      load_material(
+        ShaderSource::Glsl {
+          vertex: include_str!("../assets/materials/vertex.glsl"),
+          fragment: include_str!("../assets/materials/crt.glsl"),
+        },
+        MaterialParams {
+          uniforms: vec![
+            UniformDesc::new("Resolution", UniformType::Float2),
+            UniformDesc::new("Intensity", UniformType::Float1),
+            UniformDesc::new("CrtIntensity", UniformType::Float1),
+          ],
+          ..Default::default()
+        },
+      )?,
+    );
+
+    Ok(materials)
   }
 }
 
@@ -85,6 +129,7 @@ pub struct Settings {
   pub animation_speed_multiplier: f32,
   pub ui_scale_factor: f32,
   pub show_frames_per_second: bool,
+  pub crt_intensity: f32,
   #[serde(skip)]
   settings_file_path: PathBuf,
 }
@@ -96,6 +141,7 @@ impl Default for Settings {
       ui_scale_factor: 1.25,
       show_frames_per_second: false,
       settings_file_path: Default::default(),
+      crt_intensity: 0.3,
     }
   }
 }

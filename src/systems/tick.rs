@@ -31,7 +31,10 @@ pub fn mark_dead(world_grid: &WorldGrid, to_despawn: &mut Vec<hecs::Entity>) {
 
 pub fn mark_went_downstairs(world_grid: &WorldGrid, to_despawn: &mut Vec<hecs::Entity>) {
   to_despawn.extend(
-    world_grid.query::<(&WentDownstairs, hecs::Entity)>().into_iter().map(|(_, entity)| entity),
+    world_grid
+      .query::<(&WentDownstairs, &Player, hecs::Entity)>()
+      .into_iter()
+      .map(|(_, _, entity)| entity),
   );
 }
 
@@ -107,9 +110,9 @@ pub fn pressure_plate_handler(
   };
 
   if is_anything_standing_on_plate {
-    let _ = world_grid.remove::<(Locked, Obstacle)>(linked_entity);
+    let _ = world_grid.remove_one::<Locked>(linked_entity);
   } else {
-    let _ = world_grid.insert(linked_entity, (Locked, Obstacle));
+    let _ = world_grid.insert_one(linked_entity, Locked);
   }
 }
 

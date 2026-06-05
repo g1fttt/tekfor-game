@@ -1,5 +1,5 @@
 use crate::components::*;
-use crate::resources::{AssetID, AssetManager};
+use crate::resources::{AssetManager, SpriteID};
 
 use macroquad::prelude::*;
 
@@ -23,9 +23,10 @@ pub fn draw_sprites(world: &hecs::World, asset_manager: &AssetManager) {
   render_queue.sort_by_key(|&(z, _, _)| z);
 
   for (_, global_pos, sprite) in render_queue.into_iter() {
-    let texture = asset_manager.get(sprite.into_inner());
+    let sprite_id = sprite.into_inner();
+    let texture = asset_manager.get_texture(sprite_id);
 
-    draw_texture(&texture, global_pos.x, global_pos.y, WHITE);
+    draw_texture(texture, global_pos.x, global_pos.y, WHITE);
   }
 }
 
@@ -34,12 +35,12 @@ pub fn update_sprites(world: &hecs::World) {
     world.query::<(&StatefulObjectKind, &mut Sprite, hecs::Entity)>();
 
   for (kind, sprite, entity) in stateful_sprited_objects.iter() {
-    let asset_id = match (kind, world.satisfies::<&Locked>(entity)) {
-      (StatefulObjectKind::Door, true) => AssetID::DoorLocked,
-      (StatefulObjectKind::Door, false) => AssetID::DoorUnlocked,
+    let sprite_id = match (kind, world.satisfies::<&Locked>(entity)) {
+      (StatefulObjectKind::Door, true) => SpriteID::DoorLocked,
+      (StatefulObjectKind::Door, false) => SpriteID::DoorUnlocked,
     };
 
-    *sprite = Sprite(asset_id);
+    *sprite = Sprite(sprite_id);
   }
 }
 

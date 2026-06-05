@@ -1,4 +1,5 @@
 use crate::components::*;
+use crate::resources::{MaterialID, Settings};
 use crate::serialize::WorldInfo;
 use crate::states::menu::Menu;
 use crate::{Direction, Game, GameState, WorldGrid, scripting, utils};
@@ -17,9 +18,10 @@ use std::fs;
 pub struct Gameplay {
   pub world_grid: WorldGrid,
   script_path: Option<String>,
-  player_entity: Option<hecs::Entity>,
+  player_entities: Vec<hecs::Entity>,
   tick_state: TickState,
   is_level_finished: bool,
+  hit_intensity: f32,
   abyss: Abyss,
 }
 
@@ -27,18 +29,19 @@ impl Gameplay {
   pub fn new(info: WorldInfo, world: hecs::World) -> Self {
     let mut world_grid = WorldGrid::new(&info, world);
 
-    let player_entity = world_grid
+    let player_entities = world_grid
       .query_mut::<(&Player, hecs::Entity)>()
       .into_iter()
       .map(|(_, entity)| entity)
-      .next();
+      .collect();
 
     Self {
       world_grid,
       script_path: None,
-      player_entity,
+      player_entities,
       tick_state: TickState::ProcessingLogic,
       is_level_finished: false,
+      hit_intensity: 0.0,
       abyss: Abyss::default(),
     }
   }
@@ -89,12 +92,38 @@ impl Gameplay {
   }
 
   pub fn draw(&self, state: &Game) {
-    state.with_camera(|state| {
+    let screen_texture = render_target(screen_width() as u32, screen_height() as u32);
+
+    let render_target = state.with_camera(Some(screen_texture), |state| {
       draw_sprites(&self.world_grid, &state.asset_manager);
     });
+
+    if let Some(rt) = render_target {
+      let crt = state.asset_manager.get_material(MaterialID::CRT);
+      crt.set_uniform("Resolution", vec2(screen_width(), screen_height()));
+      crt.set_uniform("Intensity", self.hit_intensity);
+      crt.set_uniform("CrtIntensity", Settings::get().crt_intensity);
+
+      gl_use_material(crt);
+
+      draw_texture_ex(
+        &rt,
+        0.0,
+        screen_height(),
+        WHITE,
+        DrawTextureParams {
+          dest_size: Some(vec2(screen_width(), -screen_height())),
+          ..Default::default()
+        },
+      );
+
+      gl_use_default_material();
+    }
   }
 
   pub fn update(&mut self, lua: &Lua) -> mlua::Result<()> {
+    self.update_effects();
+
     update_sprites(&self.world_grid);
 
     match self.tick_state {
@@ -121,12 +150,12 @@ impl Gameplay {
   }
 
   pub fn push_player_action(&mut self, action_kind: ActionKind) {
-    let Some(entity) = self.player_entity else {
-      return;
-    };
-
-    if let Ok(mut action_queue) = self.world_grid.get::<&mut ActionQueue>(entity) {
-      action_queue.push_back(action_kind);
+    for mut queue in self
+      .player_entities
+      .iter()
+      .filter_map(|&entity| self.world_grid.get::<&mut ActionQueue>(entity).ok())
+    {
+      queue.push_back(action_kind.clone());
     }
   }
 
@@ -138,10 +167,24 @@ impl Gameplay {
     mark_dead(&self.world_grid, &mut entities_to_despawn);
     mark_went_downstairs(&self.world_grid, &mut entities_to_despawn);
 
-    self.is_level_finished = self.world_grid.query_mut::<&WentDownstairs>().into_iter().count() > 0;
-
     for entity in entities_to_despawn.into_iter() {
+      self.pre_entity_despawn(entity);
+
       let _ = self.world_grid.despawn_entity(entity);
+    }
+  }
+
+  fn pre_entity_despawn(&mut self, entity: hecs::Entity) {
+    if self.world_grid.satisfies::<&WentDownstairs>(entity) {
+      self.is_level_finished = true;
+    } else if self.world_grid.satisfies::<&Player>(entity) {
+      self.hit_intensity = 1.0;
+
+      if let Some(entity_index) =
+        self.player_entities.iter().position(|&player_entity| player_entity == entity)
+      {
+        self.player_entities.remove(entity_index);
+      }
     }
   }
 
@@ -159,28 +202,6 @@ impl Gameplay {
       Err(err) => log::error!("Failed to read currently selected script: {}", err),
     }
     Ok(())
-  }
-
-  fn process_actions(&mut self) -> bool {
-    let mut actions = Vec::new();
-
-    for (queue, entity) in self.world_grid.query::<(&mut ActionQueue, hecs::Entity)>().iter() {
-      if let Some(action_kind) = queue.pop_front() {
-        actions.push((action_kind, entity));
-      }
-    }
-
-    if actions.is_empty() {
-      return false;
-    }
-
-    for (action_kind, entity) in actions {
-      match action_kind {
-        ActionKind::Move(opts) => self.world_grid.move_entity(entity, opts),
-        ActionKind::Interact(dir) => self.world_grid.interact(entity, dir),
-      }
-    }
-    true
   }
 
   fn update_input(&mut self) -> bool {
@@ -206,6 +227,36 @@ impl Gameplay {
         can_push: true,
         despawn_if_collided: false,
       }));
+    }
+    true
+  }
+
+  fn update_effects(&mut self) {
+    if self.hit_intensity > 0.001 {
+      self.hit_intensity *= 0.05f32.powf(get_frame_time());
+    } else {
+      self.hit_intensity = 0.0;
+    }
+  }
+
+  fn process_actions(&mut self) -> bool {
+    let mut actions = Vec::new();
+
+    for (queue, entity) in self.world_grid.query::<(&mut ActionQueue, hecs::Entity)>().iter() {
+      if let Some(action_kind) = queue.pop_front() {
+        actions.push((action_kind, entity));
+      }
+    }
+
+    if actions.is_empty() {
+      return false;
+    }
+
+    for (action_kind, entity) in actions {
+      match action_kind {
+        ActionKind::Move(opts) => self.world_grid.move_entity(entity, opts),
+        ActionKind::Interact(dir) => self.world_grid.interact(entity, dir),
+      }
     }
     true
   }

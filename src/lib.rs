@@ -8,7 +8,7 @@ pub mod systems;
 pub mod utils;
 
 use components::*;
-use resources::{AssetID, AssetManager};
+use resources::{AssetManager, SpriteID};
 use serde::{Deserialize, Serialize};
 use serialize::WorldInfo;
 use strum::{EnumIter, IntoStaticStr};
@@ -35,16 +35,26 @@ impl Game {
     Ok(Self { asset_manager, camera })
   }
 
-  pub fn with_camera(&self, f: impl Fn(&Game)) {
+  pub fn with_camera(
+    &self,
+    render_target: Option<RenderTarget>,
+    f: impl Fn(&Game),
+  ) -> Option<Texture2D> {
     let mut camera: Camera2D = (&self.camera).into();
 
-    camera.zoom.y *= -1.0;
+    if render_target.is_none() {
+      camera.zoom.y *= -1.0;
+    }
+
+    camera.render_target = render_target;
 
     set_camera(&camera);
     {
       f(self);
     }
     set_default_camera();
+
+    camera.render_target.take().map(|rt| rt.texture)
   }
 
   pub fn update_camera(&mut self) {
@@ -219,7 +229,7 @@ impl WorldGrid {
     entity
   }
 
-  pub fn spawn_downstairs_at(&mut self, pos: UVec2, id: AssetID) -> hecs::Entity {
+  pub fn spawn_downstairs_at(&mut self, pos: UVec2, id: SpriteID) -> hecs::Entity {
     self.spawn_entity((
       Sprite(id),
       Downstairs,
@@ -234,7 +244,7 @@ impl WorldGrid {
 
   pub fn spawn_saw_at(&mut self, pos: UVec2, from: Direction, to: Direction) -> hecs::Entity {
     self.spawn_entity((
-      Sprite(AssetID::Saw),
+      Sprite(SpriteID::Saw),
       Movable,
       OnGrid,
       Obstacle,
@@ -248,7 +258,7 @@ impl WorldGrid {
 
   pub fn spawn_player_at(&mut self, pos: UVec2) -> hecs::Entity {
     self.spawn_entity((
-      Sprite(AssetID::Player),
+      Sprite(SpriteID::Player),
       ZIndex(1),
       Solid,
       Movable,
@@ -260,13 +270,13 @@ impl WorldGrid {
     ))
   }
 
-  pub fn spawn_wall_at(&mut self, pos: UVec2, id: AssetID) -> hecs::Entity {
+  pub fn spawn_wall_at(&mut self, pos: UVec2, id: SpriteID) -> hecs::Entity {
     self.spawn_entity((Sprite(id), OnGrid, Obstacle, Position(pos)))
   }
 
   pub fn spawn_crate_at(&mut self, pos: UVec2) -> hecs::Entity {
     self.spawn_entity((
-      Sprite(AssetID::Crate),
+      Sprite(SpriteID::Crate),
       ZIndex(1),
       OnGrid,
       Solid,
@@ -279,7 +289,7 @@ impl WorldGrid {
 
   pub fn spawn_fireball_at(&mut self, pos: UVec2, dir: Direction) -> hecs::Entity {
     self.spawn_entity((
-      Sprite(AssetID::Fireball),
+      Sprite(SpriteID::Fireball),
       Movable,
       OnGrid,
       CausesDeath,
@@ -295,7 +305,7 @@ impl WorldGrid {
 
   pub fn spawn_fireball_thrower_at(&mut self, pos: UVec2, dir: Direction) -> hecs::Entity {
     self.spawn_entity((
-      Sprite(AssetID::FireballThrower),
+      Sprite(SpriteID::FireballThrower),
       OnGrid,
       Position(pos),
       Facing(dir),
@@ -312,7 +322,7 @@ impl WorldGrid {
     linked_entity: Option<hecs::Entity>,
   ) -> hecs::Entity {
     self.spawn_entity((
-      Sprite(AssetID::PressurePlate),
+      Sprite(SpriteID::PressurePlate),
       OnGrid,
       Position(pos),
       Tickable(Interactable {
@@ -325,7 +335,7 @@ impl WorldGrid {
   pub fn spawn_door_at(&mut self, pos: UVec2, is_locked: bool) -> hecs::Entity {
     let entity = self.spawn_entity((
       StatefulObjectKind::Door,
-      Sprite(if is_locked { AssetID::DoorLocked } else { AssetID::DoorUnlocked }),
+      Sprite(if is_locked { SpriteID::DoorLocked } else { SpriteID::DoorUnlocked }),
       OnGrid,
       Obstacle,
       Position(pos),

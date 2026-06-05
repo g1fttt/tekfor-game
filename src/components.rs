@@ -1,4 +1,4 @@
-use crate::resources::{AssetID, Settings};
+use crate::resources::{Settings, SpriteID};
 use crate::systems::tick::*;
 use crate::{Direction, WorldGrid};
 
@@ -69,13 +69,13 @@ impl Animation {
   }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum ActionKind {
   Move(MoveOptions),
   Interact(Direction),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct MoveOptions {
   pub dir: Direction,
   pub can_push: bool,
@@ -110,7 +110,7 @@ impl Position {
 pub struct ZIndex(pub u32);
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
-pub struct Sprite(pub AssetID);
+pub struct Sprite(pub SpriteID);
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Bouncing {
@@ -191,7 +191,7 @@ pub struct Downstairs;
 
 deref_component!(Position, UVec2);
 deref_component!(ZIndex, u32);
-deref_component!(Sprite, AssetID);
+deref_component!(Sprite, SpriteID);
 deref_component!(ActionQueue, VecDeque<ActionKind>);
 deref_component!(Tickable, Interactable);
 deref_component!(Facing, Direction);

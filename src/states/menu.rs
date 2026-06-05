@@ -109,6 +109,7 @@ impl Menu {
         );
         ui.add(egui::Slider::new(&mut settings.ui_scale_factor, 1.0..=3.0).text("UI scale factor"));
         ui.checkbox(&mut settings.show_frames_per_second, "Show FPS");
+        ui.add(egui::Slider::new(&mut settings.crt_intensity, 0.0..=1.0).text("CRT intensity"));
 
         if ui.button("Save").clicked() {
           let _ = settings.save();
