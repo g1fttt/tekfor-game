@@ -12,7 +12,6 @@ use crate::core::{Game, GameState};
 use crate::resources::Settings;
 
 use egui_macroquad::egui;
-use mlua::Lua;
 
 use macroquad::miniquad::conf::{AppleGfxApi, Platform};
 use macroquad::prelude::*;
@@ -30,7 +29,6 @@ async fn main() -> anyhow::Result<()> {
 
   let mut current_state = GameState::default();
   let mut state = Game::new().await?;
-  let lua = scripting::engine::create()?;
 
   loop {
     clear_background(BLACK);
@@ -52,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let ui_wants_input = ui_wants_pointer_input || ui_wants_keyboard_input;
-    update_and_draw(&mut current_state, &state, &lua, ui_wants_input)?;
+    update_and_draw(&mut current_state, &state, ui_wants_input)?;
 
     egui_macroquad::draw();
 
@@ -89,7 +87,6 @@ fn draw_ui(current_state: &mut GameState, egui_ctx: &egui::Context) {
 fn update_and_draw(
   current_state: &mut GameState,
   state: &Game,
-  lua: &Lua,
   ui_wants_input: bool,
 ) -> anyhow::Result<()> {
   match current_state {
@@ -99,7 +96,7 @@ fn update_and_draw(
       editor.draw(state);
     }
     GameState::Gameplay(gameplay) => {
-      gameplay.update(lua)?;
+      gameplay.update(state)?;
       gameplay.draw(state);
     }
   }

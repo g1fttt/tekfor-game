@@ -1,46 +1,10 @@
 use crate::components::*;
-use crate::core::WorldGrid;
+use crate::states::gameplay::{GameEvent, Gameplay};
 use crate::utils;
 
-pub fn update_tickable(world_grid: &mut WorldGrid) {
-  let tickable: Vec<(InteractableHandlerKind, _)> = world_grid
-    .query::<(&Tickable, hecs::Entity)>()
-    .into_iter()
-    .map(|(tickable, entity)| (tickable.into_inner(), entity))
-    .collect();
-
-  for (handler, entity) in tickable.into_iter() {
-    handler.to_fn()(world_grid, entity);
-  }
-}
-
-pub fn mark_dead(world_grid: &WorldGrid, to_despawn: &mut Vec<hecs::Entity>) {
-  for (_, &pos) in world_grid.query::<(&CausesDeath, &Position)>().into_iter() {
-    let Some(cell_entities) = world_grid.get_cell(pos.x, pos.y) else {
-      continue;
-    };
-
-    for &entity in cell_entities {
-      if !world_grid.satisfies::<&Mortal>(entity) {
-        continue;
-      }
-
-      to_despawn.push(entity);
-    }
-  }
-}
-
-pub fn mark_went_downstairs(world_grid: &WorldGrid, to_despawn: &mut Vec<hecs::Entity>) {
-  to_despawn.extend(
-    world_grid
-      .query::<(&WentDownstairs, &Player, hecs::Entity)>()
-      .into_iter()
-      .map(|(_, _, entity)| entity),
-  );
-}
-
-pub fn fireball_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
-  let Ok((queue, dir)) = world_grid
+pub fn fireball_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
+  let Ok((queue, dir)) = state
+    .world_grid
     .query_one_mut::<(&mut ActionQueue, &Facing)>(this_entity)
     .map(|(queue, facing)| (queue, facing.into_inner()))
   else {
@@ -56,8 +20,9 @@ pub fn fireball_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
   }));
 }
 
-pub fn fireball_thrower_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
-  let Ok((this_pos, facing_dir)) = world_grid
+pub fn fireball_thrower_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
+  let Ok((this_pos, facing_dir)) = state
+    .world_grid
     .query_one::<(&Position, &Facing)>(this_entity)
     .get()
     .map(|(pos, facing)| (pos.into_inner(), facing.into_inner()))
@@ -66,59 +31,71 @@ pub fn fireball_thrower_handler(world_grid: &mut WorldGrid, this_entity: hecs::E
   };
 
   let new_pos = utils::advance_pos_in_direction(this_pos, facing_dir);
-  let has_obstacle_on_the_way =
-    world_grid.has_component_at::<&Obstacle>(new_pos.x, new_pos.y).is_some_and(|obstacle| obstacle);
 
-  if has_obstacle_on_the_way {
+  if state.world_grid.has_component_at::<&Obstacle>(new_pos.x, new_pos.y) {
     return;
   }
 
-  let fireball = world_grid.spawn_fireball_at(new_pos, facing_dir);
+  let fireball = state.world_grid.spawn_fireball_at(new_pos, facing_dir);
 
   // Не даем самому первому фаерболу застыть на месте без анимации.
-  if let Ok(queue) = world_grid.query_one_mut::<&mut ActionQueue>(fireball) {
+  if let Ok(queue) = state.world_grid.query_one_mut::<&mut ActionQueue>(fireball) {
     queue.push_back(ActionKind::Move(MoveOptions::new(facing_dir)));
   }
 }
 
-pub fn pressure_plate_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
-  let Ok(this_pos) = world_grid.get::<&Position>(this_entity).map(|pos| pos.into_inner()) else {
+pub fn pressure_plate_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
+  let Ok(this_pos) = state.world_grid.get::<&Position>(this_entity).map(|pos| pos.into_inner())
+  else {
     return;
   };
 
-  let Some(this_cell_entities) = world_grid.get_cell(this_pos.x, this_pos.y) else {
+  let Some(this_cell_entities) = state.world_grid.get_cell(this_pos.x, this_pos.y) else {
     return;
   };
 
   let is_anything_standing_on_plate = this_cell_entities
     .iter()
-    .any(|&entity| world_grid.satisfies::<&Solid>(entity) && entity != this_entity);
+    .any(|&entity| state.world_grid.satisfies::<&Solid>(entity) && entity != this_entity);
 
   let Ok(linked_entities) =
-    world_grid.get::<&LinkedEntities>(this_entity).map(|le| le.strong_clone())
+    state.world_grid.get::<&LinkedEntities>(this_entity).map(|le| le.strong_clone())
   else {
     return;
   };
 
   for &entity in linked_entities.iter() {
-    if is_anything_standing_on_plate {
-      let _ = world_grid.remove_one::<Locked>(entity);
-    } else {
-      let _ = world_grid.insert_one(entity, Locked);
-    }
+    let is_locked = state.world_grid.satisfies::<&Locked>(entity);
+
+    let event = match (is_anything_standing_on_plate, is_locked) {
+      (true, true) => {
+        let _ = state.world_grid.remove_one::<Locked>(entity);
+        GameEvent::DoorUnlock
+      }
+      (false, false) => {
+        let _ = state.world_grid.insert_one(entity, Locked);
+        GameEvent::DoorLock
+      }
+      _ => continue,
+    };
+
+    state.game_events.push(event);
   }
 }
 
-pub fn door_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
-  if world_grid.satisfies::<&Locked>(this_entity) {
+pub fn door_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
+  if state.world_grid.satisfies::<&Locked>(this_entity) {
     return;
   }
 
-  let _ = world_grid.despawn_entity(this_entity);
+  let _ = state.world_grid.despawn_entity(this_entity);
+
+  state.game_events.push(GameEvent::DoorOpen);
 }
 
-pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
-  let Ok((this_pos, bouncing_to)) = world_grid
+pub fn saw_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
+  let Ok((this_pos, bouncing_to)) = state
+    .world_grid
     .query_one_mut::<(&Position, &Bouncing)>(this_entity)
     .map(|(pos, b)| (pos.into_inner(), b.to))
   else {
@@ -126,11 +103,9 @@ pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
   };
 
   let new_pos = utils::advance_pos_in_direction(this_pos, bouncing_to);
-  let has_obstacle_on_the_way =
-    world_grid.has_component_at::<&Obstacle>(new_pos.x, new_pos.y).is_some_and(|obstacle| obstacle);
 
-  if let Ok(mut bouncing) = world_grid.get::<&mut Bouncing>(this_entity)
-    && has_obstacle_on_the_way
+  if let Ok(mut bouncing) = state.world_grid.get::<&mut Bouncing>(this_entity)
+    && state.world_grid.has_component_at::<&Obstacle>(new_pos.x, new_pos.y)
   {
     let from = bouncing.from;
 
@@ -138,7 +113,8 @@ pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
     bouncing.to = from;
   }
 
-  if let Ok((queue, dir)) = world_grid
+  if let Ok((queue, dir)) = state
+    .world_grid
     .query_one_mut::<(&mut ActionQueue, &Bouncing)>(this_entity)
     .map(|(queue, bouncing)| (queue, bouncing.to))
   {
@@ -146,18 +122,21 @@ pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
   }
 }
 
-pub fn downstairs_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
-  let Some(cell_entities) = world_grid
-    .get::<&Position>(this_entity)
-    .ok()
-    .and_then(|this_pos| world_grid.get_cell(this_pos.x, this_pos.y))
+pub fn downstairs_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
+  let Ok(this_pos) = state.world_grid.get::<&Position>(this_entity).map(|pos| pos.into_inner())
   else {
     return;
   };
 
-  if let Some(&player_at_downstairs) =
-    cell_entities.iter().find(|&&entity| world_grid.satisfies::<&Player>(entity))
-  {
-    let _ = world_grid.insert_one(player_at_downstairs, WentDownstairs);
+  let Some(cell_entities) = state.world_grid.get_cell_owned(this_pos.x, this_pos.y) else {
+    return;
+  };
+
+  for entity in cell_entities.into_iter() {
+    if !state.world_grid.satisfies::<&Player>(entity) {
+      continue;
+    }
+
+    let _ = state.world_grid.insert_one(entity, WentDownstairs);
   }
 }

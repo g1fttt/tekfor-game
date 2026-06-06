@@ -3,6 +3,7 @@ use ron::ser::PrettyConfig;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
 
+use macroquad::audio::{Sound, load_sound};
 use macroquad::experimental::collections::storage;
 use macroquad::logging as log;
 use macroquad::prelude::*;
@@ -45,24 +46,38 @@ pub enum MaterialID {
   CRT,
 }
 
+#[derive(PartialEq, Eq, Hash)]
+pub enum SoundID {
+  Lock,
+  Unlock,
+  DoorOpen,
+}
+
 type Textures = HashMap<SpriteID, Texture2D>;
 type Materials = HashMap<MaterialID, Material>;
+type Sounds = HashMap<SoundID, Sound>;
 
 pub struct AssetManager {
   textures: Textures,
+  sounds: Sounds,
   materials: Materials,
 }
 
 impl AssetManager {
   pub async fn load_all() -> Result<Self, macroquad::Error> {
-    let textures = Self::load_textures().await?;
-    let materials = Self::load_materials()?;
-
-    Ok(Self { textures, materials })
+    Ok(Self {
+      textures: Self::load_textures().await?,
+      sounds: Self::load_sounds().await?,
+      materials: Self::load_materials()?,
+    })
   }
 
   pub fn get_texture(&self, id: SpriteID) -> &Texture2D {
     self.textures.get(&id).expect("Failed to obtain texture due to unknown asset id")
+  }
+
+  pub fn get_sound(&self, id: SoundID) -> &Sound {
+    self.sounds.get(&id).expect("Failed to obtain sound due to unknown asset id")
   }
 
   pub fn get_material(&self, id: MaterialID) -> &Material {
@@ -99,6 +114,16 @@ impl AssetManager {
     textures.insert(SpriteID::Ground, load_texture("textures/ground.png").await?);
 
     Ok(textures)
+  }
+
+  async fn load_sounds() -> Result<Sounds, macroquad::Error> {
+    let mut sounds = Sounds::new();
+
+    sounds.insert(SoundID::Lock, load_sound("sounds/lock.wav").await?);
+    sounds.insert(SoundID::Unlock, load_sound("sounds/unlock.wav").await?);
+    sounds.insert(SoundID::DoorOpen, load_sound("sounds/door-open.wav").await?);
+
+    Ok(sounds)
   }
 
   fn load_materials() -> Result<Materials, macroquad::Error> {

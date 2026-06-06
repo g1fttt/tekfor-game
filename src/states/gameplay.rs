@@ -1,16 +1,15 @@
 use crate::components::*;
 use crate::core::{Direction, Game, GameState, WorldGrid};
-use crate::resources::{AssetManager, MaterialID, Settings};
+use crate::resources::{AssetManager, MaterialID, Settings, SoundID};
 use crate::serialize::WorldInfo;
 use crate::states::menu::Menu;
-use crate::{scripting, utils};
-
 use crate::systems::draw::*;
-use crate::systems::tick::*;
+use crate::{scripting, utils};
 
 use egui_macroquad::egui;
 use mlua::Lua;
 
+use macroquad::audio::play_sound_once;
 use macroquad::logging as log;
 use macroquad::prelude::*;
 
@@ -18,6 +17,7 @@ use std::fs;
 
 pub struct Gameplay {
   pub world_grid: WorldGrid,
+  pub game_events: Vec<GameEvent>,
   script_path: Option<String>,
   player_entities: Vec<hecs::Entity>,
   tick_state: TickState,
@@ -38,6 +38,7 @@ impl Gameplay {
 
     Self {
       world_grid,
+      game_events: Vec::new(),
       script_path: None,
       player_entities,
       tick_state: TickState::ProcessingLogic,
@@ -126,15 +127,15 @@ impl Gameplay {
     gl_use_default_material();
   }
 
-  pub fn update(&mut self, lua: &Lua) -> mlua::Result<()> {
+  pub fn update(&mut self, state: &Game) -> mlua::Result<()> {
     self.update_effects();
 
     update_sprites(&self.world_grid);
 
     match self.tick_state {
       TickState::ProcessingLogic => {
-        self.do_logical_tick();
-        self.update_lua(lua)?;
+        self.do_logical_tick(&state.asset_manager);
+        self.update_lua(&state.lua)?;
 
         self.tick_state = TickState::WaitingForAction;
       }
@@ -164,19 +165,56 @@ impl Gameplay {
     }
   }
 
-  fn do_logical_tick(&mut self) {
-    update_tickable(&mut self.world_grid);
+  fn do_logical_tick(&mut self, asset_manager: &AssetManager) {
+    self.update_tickable();
+    self.process_events(asset_manager);
 
     let mut entities_to_despawn = Vec::new();
 
-    mark_dead(&self.world_grid, &mut entities_to_despawn);
-    mark_went_downstairs(&self.world_grid, &mut entities_to_despawn);
+    self.mark_dead(&mut entities_to_despawn);
+    self.mark_went_downstairs(&mut entities_to_despawn);
 
     for entity in entities_to_despawn.into_iter() {
       self.pre_entity_despawn(entity);
 
       let _ = self.world_grid.despawn_entity(entity);
     }
+  }
+
+  fn update_tickable(&mut self) {
+    let tickable: Vec<(InteractableHandlerKind, _)> = self
+      .world_grid
+      .query::<(&Tickable, hecs::Entity)>()
+      .into_iter()
+      .map(|(tickable, entity)| (tickable.into_inner(), entity))
+      .collect();
+
+    for (handler, entity) in tickable.into_iter() {
+      handler.to_fn()(self, entity);
+    }
+  }
+
+  fn mark_dead(&self, to_despawn: &mut Vec<hecs::Entity>) {
+    for (_, &pos) in self.world_grid.query::<(&CausesDeath, &Position)>().into_iter() {
+      let Some(cell_entities) = self.world_grid.get_cell(pos.x, pos.y) else {
+        continue;
+      };
+
+      for &entity in cell_entities {
+        if !self.world_grid.satisfies::<&Mortal>(entity) {
+          continue;
+        }
+
+        to_despawn.push(entity);
+      }
+    }
+  }
+
+  fn mark_went_downstairs(&self, to_despawn: &mut Vec<hecs::Entity>) {
+    let mut went_downstairs_query =
+      self.world_grid.query::<(&WentDownstairs, &Player, hecs::Entity)>();
+
+    to_despawn.extend(went_downstairs_query.into_iter().map(|(_, _, entity)| entity));
   }
 
   fn pre_entity_despawn(&mut self, entity: hecs::Entity) {
@@ -259,8 +297,99 @@ impl Gameplay {
 
     for (action_kind, entity) in actions {
       match action_kind {
-        ActionKind::Move(opts) => self.world_grid.move_entity(entity, opts),
+        ActionKind::Move(opts) => self.move_entity(entity, opts),
       }
+    }
+    true
+  }
+
+  fn process_events(&mut self, asset_manager: &AssetManager) {
+    while let Some(event) = self.game_events.pop() {
+      let sound_id = match event {
+        GameEvent::DoorLock => SoundID::Lock,
+        GameEvent::DoorUnlock => SoundID::Unlock,
+        GameEvent::DoorOpen => SoundID::DoorOpen,
+      };
+
+      play_sound_once(asset_manager.get_sound(sound_id));
+    }
+  }
+
+  fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) {
+    if !self.world_grid.satisfies::<(&Movable, &OnGrid)>(entity) {
+      return;
+    }
+
+    let Ok(pos) = self.world_grid.get::<&Position>(entity).map(|pos| pos.into_inner()) else {
+      return;
+    };
+
+    let new_pos = utils::advance_pos_in_direction(pos, opts.dir);
+
+    let Some(cell_entities) = self.world_grid.get_cell_owned(new_pos.x, new_pos.y) else {
+      return;
+    };
+
+    self.interact_with_entities(&cell_entities);
+
+    if opts.can_push {
+      self.push_entities(&cell_entities, opts.dir);
+    }
+
+    let entity_move_success = self.move_entity_to_pos(entity, new_pos.x, new_pos.y);
+
+    if entity_move_success {
+      let start = Position(pos);
+      let end = Position(new_pos);
+
+      let move_animation = AnimationKind::Move { start, end };
+
+      let _ = self.world_grid.insert_one(entity, Animation::new(move_animation));
+    } else if !entity_move_success && opts.despawn_if_collided {
+      let _ = self.world_grid.despawn_entity(entity);
+    }
+  }
+
+  fn push_entities(&mut self, entities: &[hecs::Entity], dir: Direction) {
+    for &entity in entities.iter() {
+      if !self.world_grid.satisfies::<(&Movable, &Pushable)>(entity) {
+        continue;
+      }
+
+      self.move_entity(entity, MoveOptions::new(dir));
+    }
+  }
+
+  fn interact_with_entities(&mut self, entities: &[hecs::Entity]) {
+    for &entity in entities.iter() {
+      let Ok(handler) = self.world_grid.get::<&InteractableHandlerKind>(entity).map(|h| h.to_fn())
+      else {
+        continue;
+      };
+
+      handler(self, entity);
+    }
+  }
+
+  fn move_entity_to_pos(&mut self, entity: hecs::Entity, x: u32, y: u32) -> bool {
+    if self.world_grid.has_component_at::<&Obstacle>(x, y) {
+      return false;
+    }
+
+    let Ok(pos) = self
+      .world_grid
+      .query_one_mut::<(&Position, &Movable, &OnGrid)>(entity)
+      .map(|(pos, _, _)| pos.into_inner())
+    else {
+      return false;
+    };
+
+    self.world_grid.remove_from_cell(entity, pos.x, pos.y);
+    self.world_grid.add_to_cell(entity, x, y);
+
+    if let Ok(mut pos) = self.world_grid.get::<&mut Position>(entity) {
+      pos.x = x;
+      pos.y = y;
     }
     true
   }
@@ -269,7 +398,12 @@ impl Gameplay {
 #[derive(Default)]
 pub struct Abyss {}
 
-#[derive(Debug)]
+pub enum GameEvent {
+  DoorLock,
+  DoorUnlock,
+  DoorOpen,
+}
+
 enum TickState {
   ProcessingLogic,
   WaitingForAction,

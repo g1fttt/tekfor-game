@@ -1,14 +1,16 @@
 use crate::components::*;
 use crate::resources::{AssetManager, SpriteID};
+use crate::scripting;
 use crate::serialize::WorldInfo;
 use crate::states::editor::Editor;
 use crate::states::gameplay::Gameplay;
 use crate::states::menu::Menu;
-use crate::utils;
 
+use mlua::Lua;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
 
+use macroquad::audio::AudioContext;
 use macroquad::experimental::camera::mouse::Camera;
 use macroquad::prelude::*;
 
@@ -16,15 +18,20 @@ use std::ops::{Deref, DerefMut};
 
 pub struct Game {
   pub asset_manager: AssetManager,
+  pub lua: Lua,
+  #[expect(dead_code, reason = "Отсутствие публичных методов")]
+  audio_context: AudioContext,
   camera: Camera,
 }
 
 impl Game {
-  pub async fn new() -> Result<Self, macroquad::Error> {
-    let asset_manager = AssetManager::load_all().await?;
-    let camera = Camera::new(Vec2::ZERO, 0.005);
-
-    Ok(Self { asset_manager, camera })
+  pub async fn new() -> anyhow::Result<Self> {
+    Ok(Self {
+      asset_manager: AssetManager::load_all().await?,
+      lua: scripting::engine::create()?,
+      audio_context: AudioContext::new(),
+      camera: Camera::new(Vec2::ZERO, 0.005),
+    })
   }
 
   pub fn with_camera(
@@ -203,6 +210,9 @@ impl WorldGrid {
   pub fn resize(&mut self, new_width: u32, new_height: u32) {
     self.grid.resize(new_width, new_height);
   }
+  pub fn get_cell_owned(&self, x: u32, y: u32) -> Option<Vec<hecs::Entity>> {
+    self.grid.get_cell_owned(x, y)
+  }
 
   pub fn get_cell(&self, x: u32, y: u32) -> Option<&[hecs::Entity]> {
     self.grid.get_cell(x, y)
@@ -348,85 +358,12 @@ impl WorldGrid {
     self.world.despawn(entity)
   }
 
-  pub fn has_component_at<Q: hecs::Query>(&self, x: u32, y: u32) -> Option<bool> {
-    let cell_entities = self.grid.get_cell(x, y)?;
-
-    Some(cell_entities.iter().any(|&ent| self.world.satisfies::<Q>(ent)))
-  }
-
-  pub fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) {
-    if !self.world.satisfies::<(&Movable, &OnGrid)>(entity) {
-      return;
-    }
-
-    let Ok(new_pos) = self
-      .world
-      .get::<&Position>(entity)
-      .map(|pos| utils::advance_pos_in_direction(pos.into_inner(), opts.dir))
-    else {
-      return;
-    };
-
-    let Some(cell_entities) = self.grid.get_cell_owned(new_pos.x, new_pos.y) else {
-      return;
-    };
-
-    self.interact_with_entities(&cell_entities);
-
-    if opts.can_push {
-      self.push_entities(&cell_entities, opts.dir);
-    }
-
-    if !self.move_entity_to_pos(entity, new_pos.x, new_pos.y) && opts.despawn_if_collided {
-      let _ = self.despawn_entity(entity);
-    }
-  }
-
-  fn push_entities(&mut self, entities: &[hecs::Entity], dir: Direction) {
-    for &entity in entities.iter() {
-      if !self.world.satisfies::<(&Movable, &Pushable)>(entity) {
-        continue;
-      }
-
-      self.move_entity(entity, MoveOptions::new(dir));
-    }
-  }
-
-  fn interact_with_entities(&mut self, entities: &[hecs::Entity]) {
-    for &entity in entities.iter() {
-      let Ok(handler) = self.world.get::<&InteractableHandlerKind>(entity).map(|h| h.to_fn())
-      else {
-        continue;
-      };
-
-      handler(self, entity);
-    }
-  }
-
-  fn move_entity_to_pos(&mut self, entity: hecs::Entity, x: u32, y: u32) -> bool {
-    if self.has_component_at::<&Obstacle>(x, y).is_none_or(|obstacle| obstacle) {
-      return false;
-    }
-
-    let Ok((entity_pos, _, _)) =
-      self.world.query_one_mut::<(&mut Position, &Movable, &OnGrid)>(entity)
-    else {
+  pub fn has_component_at<Q: hecs::Query>(&self, x: u32, y: u32) -> bool {
+    let Some(cell_entities) = self.grid.get_cell(x, y) else {
       return false;
     };
 
-    self.grid.remove_from_cell(entity, entity_pos.x, entity_pos.y);
-    self.grid.add_to_cell(entity, x, y);
-
-    let start = *entity_pos;
-    {
-      entity_pos.x = x;
-      entity_pos.y = y;
-    }
-    let end = Position(uvec2(x, y));
-
-    let _ = self.world.insert_one(entity, Animation::new(AnimationKind::Move { start, end }));
-
-    true
+    cell_entities.iter().any(|&ent| self.world.satisfies::<Q>(ent))
   }
 }
 

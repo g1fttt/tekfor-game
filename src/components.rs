@@ -1,5 +1,6 @@
-use crate::core::{Direction, WorldGrid};
+use crate::core::Direction;
 use crate::resources::{Settings, SpriteID};
+use crate::states::gameplay::Gameplay;
 use crate::systems::tick::*;
 
 use macroquad::math::{UVec2, Vec2};
@@ -118,7 +119,7 @@ pub struct Bouncing {
   pub to: Direction,
 }
 
-type InteractableHandler = fn(&mut WorldGrid, this_entity: hecs::Entity);
+type InteractableHandler = fn(&mut Gameplay, this_entity: hecs::Entity);
 
 #[derive(EnumIter, IntoStaticStr, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum InteractableHandlerKind {
