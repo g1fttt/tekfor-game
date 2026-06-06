@@ -53,7 +53,6 @@ pub enum SoundID {
   DoorOpen,
   LevelFinished,
   Death,
-  DungeonAmbience,
 }
 
 type Textures = HashMap<SpriteID, Texture2D>;
@@ -127,7 +126,6 @@ impl AssetManager {
     sounds.insert(SoundID::DoorOpen, load_sound("sounds/door-open.wav").await?);
     sounds.insert(SoundID::LevelFinished, load_sound("sounds/level-finished.wav").await?);
     sounds.insert(SoundID::Death, load_sound("sounds/death.wav").await?);
-    sounds.insert(SoundID::DungeonAmbience, load_sound("sounds/dungeon-ambience.wav").await?);
 
     Ok(sounds)
   }
