@@ -13,6 +13,7 @@ use strum::IntoEnumIterator;
 use macroquad::logging as log;
 use macroquad::prelude::*;
 
+use std::collections::HashSet;
 use std::fs;
 
 pub struct Editor {
@@ -243,7 +244,7 @@ impl Editor {
         && self.is_in_linkage_mode
         && ui.button("Link").clicked()
       {
-        self.entity_info.linked_entities.push(entity);
+        self.entity_info.linked_entities.insert(entity);
       }
 
       if has_linked_entities && ui.button("Clear linked").clicked() {
@@ -408,7 +409,7 @@ where
 #[derive(Default)]
 pub struct EntityInfo {
   sprite_id: Option<SpriteID>,
-  linked_entities: Vec<hecs::Entity>,
+  linked_entities: HashSet<hecs::Entity>,
   direction_from: Option<Direction>,
   direction_to: Option<Direction>,
   lock_kind: Option<LockKind>,

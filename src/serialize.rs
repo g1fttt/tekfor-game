@@ -83,6 +83,7 @@ pub enum ComponentID {
   Obstacle,
   Downstairs,
   LinkedEntities,
+  Intelligent,
 }
 
 macro_rules! impl_serialize_context {
@@ -201,6 +202,7 @@ impl_serialize_context!(
   ComponentID::Obstacle => Obstacle,
   ComponentID::Downstairs => Downstairs,
   ComponentID::LinkedEntities => LinkedEntities,
+  ComponentID::Intelligent => Intelligent,
 );
 
 impl_deserialize_context!(
@@ -226,6 +228,7 @@ impl_deserialize_context!(
   ComponentID::Obstacle => Obstacle,
   ComponentID::Downstairs => Downstairs,
   ComponentID::LinkedEntities => LinkedEntities,
+  ComponentID::Intelligent => Intelligent,
 );
 
 pub(super) mod uvec2_serde {

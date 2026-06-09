@@ -12,6 +12,7 @@ use macroquad::audio::AudioContext;
 use macroquad::experimental::camera::mouse::Camera;
 use macroquad::prelude::*;
 
+use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
 
 pub struct Game {
@@ -258,6 +259,7 @@ impl WorldGrid {
       OnGrid,
       Player,
       Mortal,
+      Intelligent,
       Position(pos),
       ActionQueue::default(),
     ))
@@ -306,7 +308,7 @@ impl WorldGrid {
   pub fn spawn_pressure_plate(
     &mut self,
     pos: UVec2,
-    linked_entities: Option<Vec<hecs::Entity>>,
+    linked_entities: Option<HashSet<hecs::Entity>>,
   ) -> hecs::Entity {
     let entity = self.spawn_entity((
       Sprite(SpriteID::PressurePlate),

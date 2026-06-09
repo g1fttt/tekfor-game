@@ -327,7 +327,9 @@ impl Gameplay {
       return;
     };
 
-    self.interact_with_entities(&cell_entities);
+    if self.world_grid.satisfies::<&Intelligent>(entity) {
+      self.interact_with_entities(&cell_entities);
+    }
 
     if opts.can_push {
       self.push_entities(&cell_entities, opts.dir);

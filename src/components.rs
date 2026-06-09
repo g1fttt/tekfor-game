@@ -8,7 +8,7 @@ use macroquad::math::{UVec2, Vec2};
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
 
 macro_rules! deref_component {
@@ -146,18 +146,18 @@ impl InteractableHandlerKind {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct LinkedEntities(Arc<Vec<hecs::Entity>>);
+pub struct LinkedEntities(Arc<HashSet<hecs::Entity>>);
 
 impl LinkedEntities {
-  pub fn new(entities: Vec<hecs::Entity>) -> Self {
+  pub fn new(entities: HashSet<hecs::Entity>) -> Self {
     Self(Arc::new(entities))
   }
 
-  pub fn get_mut(&mut self) -> Option<&mut Vec<hecs::Entity>> {
+  pub fn get_mut(&mut self) -> Option<&mut HashSet<hecs::Entity>> {
     Arc::get_mut(&mut self.0)
   }
 
-  pub fn strong_clone(&self) -> Arc<Vec<hecs::Entity>> {
+  pub fn strong_clone(&self) -> Arc<HashSet<hecs::Entity>> {
     Arc::clone(&self.0)
   }
 }
@@ -197,6 +197,9 @@ pub struct Player;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Downstairs;
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Intelligent;
 
 deref_component!(Position, UVec2);
 deref_component!(ZIndex, u32);
