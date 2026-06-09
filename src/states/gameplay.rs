@@ -323,7 +323,9 @@ impl Gameplay {
 
     let new_pos = utils::advance_pos_in_direction(pos, opts.dir);
 
-    let Some(cell_entities) = self.world_grid.get_cell_owned(new_pos.x, new_pos.y) else {
+    let Some(cell_entities): Option<Vec<hecs::Entity>> =
+      self.world_grid.get_cell(new_pos.x, new_pos.y).map(|it| it.cloned().collect())
+    else {
       return;
     };
 

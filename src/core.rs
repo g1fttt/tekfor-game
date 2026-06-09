@@ -12,8 +12,10 @@ use macroquad::audio::AudioContext;
 use macroquad::experimental::camera::mouse::Camera;
 use macroquad::prelude::*;
 
-use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
+
+use std::collections::HashSet;
+use std::collections::hash_set::Iter;
 
 pub struct Game {
   pub asset_manager: AssetManager,
@@ -85,7 +87,7 @@ pub enum Direction {
 }
 
 pub struct Grid {
-  cells: Vec<Vec<hecs::Entity>>,
+  cells: Vec<HashSet<hecs::Entity>>,
   width: u32,
   height: u32,
 }
@@ -98,7 +100,7 @@ impl Grid {
     let mut cells = Vec::with_capacity(capacity);
 
     for _ in 0..capacity {
-      cells.push(Vec::with_capacity(1));
+      cells.push(HashSet::with_capacity(1));
     }
 
     let mut this = Self { cells, width, height };
@@ -122,7 +124,7 @@ impl Grid {
         self.cells.reserve(to_alloc);
 
         for _ in 0..to_alloc {
-          self.cells.push(Vec::with_capacity(1));
+          self.cells.push(HashSet::with_capacity(1));
         }
       }
       None => {
@@ -146,17 +148,13 @@ impl Grid {
     self.height
   }
 
-  pub fn get_cell_owned(&self, x: u32, y: u32) -> Option<Vec<hecs::Entity>> {
-    self.get_cell(x, y).map(|cell| cell.to_owned())
-  }
-
-  pub fn get_cell(&self, x: u32, y: u32) -> Option<&[hecs::Entity]> {
-    self.index(x, y).map(|idx| self.cells[idx].as_slice())
+  pub fn get_cell(&self, x: u32, y: u32) -> Option<Iter<'_, hecs::Entity>> {
+    self.index(x, y).map(|idx| self.cells[idx].iter())
   }
 
   pub fn add_to_cell(&mut self, entity: hecs::Entity, x: u32, y: u32) {
     if let Some(idx) = self.index(x, y) {
-      self.cells[idx].push(entity);
+      self.cells[idx].insert(entity);
     }
   }
 
@@ -197,11 +195,8 @@ impl WorldGrid {
   pub fn resize(&mut self, new_width: u32, new_height: u32) {
     self.grid.resize(new_width, new_height);
   }
-  pub fn get_cell_owned(&self, x: u32, y: u32) -> Option<Vec<hecs::Entity>> {
-    self.grid.get_cell_owned(x, y)
-  }
 
-  pub fn get_cell(&self, x: u32, y: u32) -> Option<&[hecs::Entity]> {
+  pub fn get_cell(&self, x: u32, y: u32) -> Option<Iter<'_, hecs::Entity>> {
     self.grid.get_cell(x, y)
   }
 
@@ -357,11 +352,11 @@ impl WorldGrid {
   }
 
   pub fn has_component_at<Q: hecs::Query>(&self, x: u32, y: u32) -> bool {
-    let Some(cell_entities) = self.grid.get_cell(x, y) else {
+    let Some(mut cell_entities) = self.grid.get_cell(x, y) else {
       return false;
     };
 
-    cell_entities.iter().any(|&ent| self.world.satisfies::<Q>(ent))
+    cell_entities.any(|&ent| self.world.satisfies::<Q>(ent))
   }
 }
 

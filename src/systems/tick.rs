@@ -53,7 +53,7 @@ pub fn pressure_plate_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
     return;
   };
 
-  let Some(this_cell_entities) = state.world_grid.get_cell(this_pos.x, this_pos.y) else {
+  let Some(mut this_cell_entities) = state.world_grid.get_cell(this_pos.x, this_pos.y) else {
     return;
   };
 
@@ -64,7 +64,6 @@ pub fn pressure_plate_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
   };
 
   let is_anything_standing_on_plate = this_cell_entities
-    .iter()
     .any(|&entity| state.world_grid.satisfies::<&Solid>(entity) && entity != this_entity);
 
   for &entity in linked_entities.iter() {
@@ -140,11 +139,11 @@ pub fn downstairs_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
     return;
   };
 
-  let Some(cell_entities) = state.world_grid.get_cell_owned(this_pos.x, this_pos.y) else {
+  let Some(cell_entities) = state.world_grid.get_cell(this_pos.x, this_pos.y) else {
     return;
   };
 
-  for entity in cell_entities.into_iter() {
+  for &entity in cell_entities {
     if !state.world_grid.satisfies::<&Player>(entity) {
       continue;
     }
