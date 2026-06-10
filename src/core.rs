@@ -236,7 +236,6 @@ impl WorldGrid {
       Sprite(SpriteID::Saw),
       Movable,
       OnGrid,
-      Obstacle,
       CausesDeath,
       Position(pos),
       ActionQueue::default(),

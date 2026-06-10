@@ -162,8 +162,8 @@ impl AssetManager {
   }
 }
 
-const VERTEX_SHADER: &str = include_str!("../assets/materials/vertex.glsl");
-const CRT_SHADER: &str = include_str!("../assets/materials/crt.glsl");
+const VERTEX_SHADER: &str = include_str!("materials/vertex.glsl");
+const CRT_SHADER: &str = include_str!("materials/crt.glsl");
 
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
