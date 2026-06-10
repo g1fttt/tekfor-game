@@ -38,12 +38,6 @@ pub enum SpriteID {
   WallVerticalTopEdge,
   WallVerticalBottomEdge,
   DownstairsHorizontalUpper,
-  GroundHorizontal,
-  GroundHorizontalLeftLowerCorner,
-  GroundHorizontalLeftUpperCorner,
-  GroundHorizontalRightLowerCorner,
-  GroundHorizontalRightUpperCorner,
-  GroundVertical,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -118,13 +112,7 @@ impl AssetManager {
     textures.insert(SpriteID::WallVerticalTopEdge, load_texture("textures/wall-vertical-top-edge.png").await?);
     textures.insert(SpriteID::WallVerticalBottomEdge, load_texture("textures/wall-vertical-bottom-edge.png").await?);
     textures.insert(SpriteID::DownstairsHorizontalUpper, load_texture("textures/downstairs-horizontal-upper.png").await?);
-    textures.insert(SpriteID::GroundHorizontal, load_texture("textures/ground-horizontal.png").await?);
-    textures.insert(SpriteID::GroundHorizontalLeftLowerCorner, load_texture("textures/ground-horizontal-left-lower-corner.png").await?);
-    textures.insert(SpriteID::GroundHorizontalLeftUpperCorner, load_texture("textures/ground-horizontal-left-upper-corner.png").await?);
-    textures.insert(SpriteID::GroundHorizontalRightLowerCorner, load_texture("textures/ground-horizontal-right-lower-corner.png").await?);
-    textures.insert(SpriteID::GroundHorizontalRightUpperCorner, load_texture("textures/ground-horizontal-right-upper-corner.png").await?);
-    textures.insert(SpriteID::GroundVertical, load_texture("textures/ground-vertical.png").await?);
-
+    
     Ok(textures)
   }
 

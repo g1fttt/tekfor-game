@@ -217,10 +217,6 @@ impl WorldGrid {
     entity
   }
 
-  pub fn spawn_ground_at(&mut self, pos: UVec2, id: SpriteID) -> hecs::Entity {
-    self.spawn_entity((Sprite(id), OnGrid, Position(pos)))
-  }
-
   pub fn spawn_downstairs_at(&mut self, pos: UVec2, id: SpriteID) -> hecs::Entity {
     self.spawn_entity((
       Sprite(id),

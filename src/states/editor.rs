@@ -290,14 +290,6 @@ impl Editor {
       downstairs_sprite_id @ SpriteID::DownstairsHorizontalUpper => self.draw_plain_sprite_ui(ui, |this| {
         Some(this.world_grid.spawn_downstairs_at(this.cursor_pos, downstairs_sprite_id))
       }),
-      ground_sprite_id  @ (SpriteID::GroundHorizontal
-      | SpriteID::GroundHorizontalLeftLowerCorner
-      | SpriteID::GroundHorizontalLeftUpperCorner
-      | SpriteID::GroundHorizontalRightLowerCorner
-      | SpriteID::GroundHorizontalRightUpperCorner
-      | SpriteID::GroundVertical) => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_ground_at(this.cursor_pos, ground_sprite_id))
-      }),
       SpriteID::DoorLocked => self.draw_door_locked_ui(ui),
       SpriteID::PressurePlate => self.draw_pressure_plate_ui(ui),
       SpriteID::Saw => self.draw_saw_ui(ui),
