@@ -1,14 +1,11 @@
 use crate::resources::Settings;
-use crate::serialize::*;
 use crate::states::PlannedGameState;
-use crate::utils;
+use crate::{serialize, utils};
 
 use egui_macroquad::egui;
 
 use macroquad::logging as log;
 use macroquad::miniquad::window::order_quit;
-
-use std::fs;
 
 #[derive(Default)]
 pub struct Menu {
@@ -62,11 +59,7 @@ impl Menu {
           })
         });
 
-        if let Some(ref level_path) = self.chosen_level
-          && ui.button("Start").clicked()
-        {
-          log::debug!("Level (\"{}\") was chosen", level_path);
-
+        if ui.button("Start").clicked() {
           self.should_start_level = true;
         }
       });
@@ -97,14 +90,18 @@ impl Menu {
     if let Some(ref level_path) = self.chosen_level
       && self.should_start_level
     {
-      let bytes = fs::read(level_path).unwrap();
-      let world_info = deserialize_world_info(&bytes).map(Box::new).unwrap();
-
-      return Some(PlannedGameState::Gameplay(world_info));
+      match serialize::load_world(level_path).map(Box::new) {
+        Ok(world_info) => Some(PlannedGameState::Gameplay(world_info)),
+        Err(err) => {
+          log::error!("Failed to read level at: {}. Due to: {}", level_path, err);
+          None
+        }
+      }
     } else if self.should_start_editor {
-      return Some(PlannedGameState::Editor);
+      Some(PlannedGameState::Editor)
+    } else {
+      None
     }
-    None
   }
 }
 

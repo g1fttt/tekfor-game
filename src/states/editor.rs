@@ -2,7 +2,7 @@ use crate::components::*;
 use crate::core::{Direction, Game, Grid, WorldGrid};
 use crate::lock_picking::LockKind;
 use crate::resources::SpriteID;
-use crate::serialize::*;
+use crate::serialize::{self, WorldInfo};
 use crate::states::PlannedGameState;
 use crate::systems::draw::draw_sprites;
 use crate::utils;
@@ -14,7 +14,6 @@ use macroquad::logging as log;
 use macroquad::prelude::*;
 
 use std::collections::HashSet;
-use std::fs;
 
 pub struct Editor {
   level_path: String,
@@ -68,15 +67,11 @@ impl Editor {
         self.should_capture_keyboard = resp.clicked() || resp.changed();
 
         if ui.button("Save").clicked() {
-          let bytes = serialize_world_info(&self.world_info, &self.world_grid)?;
-
-          fs::write(&self.level_path, bytes)?;
+          serialize::save_world(&self.level_path, &self.world_info, &self.world_grid)?;
         }
 
         if ui.button("Load").clicked() {
-          let bytes = fs::read(&self.level_path)?;
-
-          let (info, world) = deserialize_world_info(&bytes)?;
+          let (info, world) = serialize::load_world(&self.level_path)?;
 
           self.world_grid = WorldGrid::new(&info, world);
           self.world_info = info;
@@ -285,7 +280,7 @@ impl Editor {
         Some(this.world_grid.spawn_entity(player_template(this.cursor_pos)))
       }),
       SpriteID::DoorUnlocked => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_entity(door_template(this.cursor_pos, None)))
+        Some(this.world_grid.spawn_entity(door_template(this.cursor_pos, false)))
       }),
       downstairs_sprite_id @ SpriteID::DownstairsHorizontalUpper => self.draw_plain_sprite_ui(ui, |this| {
         Some(this.world_grid.spawn_entity(downstairs_template(this.cursor_pos, downstairs_sprite_id)))
@@ -314,7 +309,7 @@ impl Editor {
     });
 
     let door_locked_entity = self.draw_plain_sprite_ui(ui, |this| {
-      Some(this.world_grid.spawn_entity(door_template(this.cursor_pos, this.entity_info.lock_kind)))
+      Some(this.world_grid.spawn_entity(door_template(this.cursor_pos, true)))
     });
 
     if let Some(entity) = door_locked_entity

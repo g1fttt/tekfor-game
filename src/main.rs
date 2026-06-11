@@ -91,7 +91,7 @@ fn update_and_draw(
   current_state: &mut GameState,
   state: &mut Game,
   ui_wants_input: bool,
-) -> anyhow::Result<()> {
+) -> mlua::Result<()> {
   let planned_state = match current_state {
     GameState::Menu(menu) => menu.planned(),
     GameState::Editor(editor) => {

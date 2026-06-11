@@ -1,12 +1,107 @@
 use crate::components::*;
+use crate::resources::SpriteID;
 
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
 
+use macroquad::logging as log;
+use macroquad::math::UVec2;
+
 use rmp_serde::decode::Error as DecodeError;
 use rmp_serde::encode::Error as EncodeError;
 
-pub fn serialize_world_info(info: &WorldInfo, world: &hecs::World) -> Result<Vec<u8>, EncodeError> {
+use std::path::Path;
+use std::{fs, io};
+
+const WORLD_FORMAT_VERSION: u16 = 1;
+
+pub fn save_world(path: impl AsRef<Path>, info: &WorldInfo, world: &hecs::World) -> io::Result<()> {
+  let bytes = serialize_world_info(info, world).unwrap();
+  fs::write(path, bytes)
+}
+
+pub fn load_world(path: impl AsRef<Path>) -> io::Result<(WorldInfo, hecs::World)> {
+  let bytes = fs::read(path)?;
+  let (info, mut world) = deserialize_world_info(&bytes).unwrap();
+
+  if info.format_version != WORLD_FORMAT_VERSION {
+    todo!("Implement migration logic");
+  }
+
+  let mut cmd_buf = hecs::CommandBuffer::new();
+
+  for (sprite_id, pos, entity) in world
+    .query::<(&Sprite, &Position, &OnGrid, hecs::Entity)>()
+    .into_iter()
+    .map(|(s, p, _, e)| (s.into_inner(), p.into_inner(), e))
+  {
+    let entity_ref = world.entity(entity).unwrap();
+
+    match patch_missing_components(sprite_id, pos, entity_ref) {
+      Ok(mut entity_builder) => cmd_buf.insert(entity, entity_builder.build()),
+      Err(MissingMandatoryComponent) => {
+        let sprite_text: &'static str = sprite_id.into();
+        log::error!("Missing mandatory component on {}", sprite_text)
+      }
+    }
+  }
+
+  cmd_buf.run_on(&mut world);
+
+  Ok((info, world))
+}
+
+struct MissingMandatoryComponent;
+
+fn patch_missing_components(
+  sprite_id: SpriteID,
+  pos: UVec2,
+  entity_ref: hecs::EntityRef,
+) -> Result<hecs::EntityBuilder, MissingMandatoryComponent> {
+  let mut entity_builder = hecs::EntityBuilder::new();
+
+  match sprite_id {
+    SpriteID::WallHorizontal
+    | SpriteID::WallHorizontalLeftEdge
+    | SpriteID::WallHorizontalRightEdge
+    | SpriteID::WallLeftLowerCorner
+    | SpriteID::WallLeftUpperCorner
+    | SpriteID::WallRightLowerCorner
+    | SpriteID::WallRightUpperCorner
+    | SpriteID::WallVertical
+    | SpriteID::WallVerticalLeftSplit
+    | SpriteID::WallVerticalRightSplit
+    | SpriteID::WallHorizontalUpperSplit
+    | SpriteID::WallHorizontalLowerSplit
+    | SpriteID::WallVerticalTopEdge
+    | SpriteID::WallVerticalBottomEdge => entity_builder.add_bundle(wall_template(pos, sprite_id)),
+    SpriteID::Crate => entity_builder.add_bundle(crate_template(pos)),
+    SpriteID::Player => entity_builder.add_bundle(player_template(pos)),
+    SpriteID::DoorUnlocked | SpriteID::DoorLocked => {
+      let is_locked = sprite_id == SpriteID::DoorLocked;
+      entity_builder.add_bundle(door_template(pos, is_locked))
+    }
+    SpriteID::DownstairsHorizontalUpper => {
+      entity_builder.add_bundle(downstairs_template(pos, sprite_id))
+    }
+    SpriteID::PressurePlate => entity_builder.add_bundle(pressure_plate_template(pos)),
+    SpriteID::Saw => {
+      let bouncing = entity_ref.get::<&Bouncing>().ok_or(MissingMandatoryComponent)?;
+      entity_builder.add_bundle(saw_template(pos, bouncing.from, bouncing.to))
+    }
+    SpriteID::Fireball => {
+      let facing = entity_ref.get::<&Facing>().ok_or(MissingMandatoryComponent)?;
+      entity_builder.add_bundle(fireball_template(pos, facing.into_inner()))
+    }
+    SpriteID::FireballThrower => {
+      let facing = entity_ref.get::<&Facing>().ok_or(MissingMandatoryComponent)?;
+      entity_builder.add_bundle(fireball_thrower_template(pos, facing.into_inner()))
+    }
+  };
+  Ok(entity_builder)
+}
+
+fn serialize_world_info(info: &WorldInfo, world: &hecs::World) -> Result<Vec<u8>, EncodeError> {
   let mut full_info = WorldInfoFull::new(info.clone());
 
   let mut serializer = rmp_serde::Serializer::new(&mut full_info.world_bytes);
@@ -15,7 +110,7 @@ pub fn serialize_world_info(info: &WorldInfo, world: &hecs::World) -> Result<Vec
   rmp_serde::to_vec_named(&full_info)
 }
 
-pub fn deserialize_world_info(bytes: &[u8]) -> Result<(WorldInfo, hecs::World), DecodeError> {
+fn deserialize_world_info(bytes: &[u8]) -> Result<(WorldInfo, hecs::World), DecodeError> {
   let full_info: WorldInfoFull = rmp_serde::from_slice(bytes)?;
 
   let mut deserializer = rmp_serde::Deserializer::new(full_info.world_bytes.as_slice());
@@ -29,15 +124,21 @@ pub fn deserialize_world_info(bytes: &[u8]) -> Result<(WorldInfo, hecs::World), 
   Ok((info, world))
 }
 
+const fn default_format_version() -> u16 {
+  WORLD_FORMAT_VERSION
+}
+
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct WorldInfo {
+  #[serde(default = "default_format_version")]
+  format_version: u16,
   pub width: u32,
   pub height: u32,
 }
 
 impl WorldInfo {
   pub fn new(width: u32, height: u32) -> Self {
-    Self { width, height }
+    Self { format_version: WORLD_FORMAT_VERSION, width, height }
   }
 }
 
@@ -61,7 +162,7 @@ impl WorldInfoFull {
 }
 
 #[derive(EnumIter, IntoStaticStr, Serialize, Deserialize, PartialEq, Clone, Copy)]
-pub enum ComponentID {
+enum ComponentID {
   Animation,
   ActionQueue,
   StatefulObjectKind,

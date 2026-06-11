@@ -287,10 +287,10 @@ pub fn pressure_plate_template(pos: UVec2) -> impl hecs::DynamicBundle {
   )
 }
 
-pub fn door_template(pos: UVec2, lock_kind: Option<LockKind>) -> impl hecs::DynamicBundle {
+pub fn door_template(pos: UVec2, is_locked: bool) -> impl hecs::DynamicBundle {
   (
     StatefulObjectKind::Door,
-    Sprite(if lock_kind.is_some() { SpriteID::DoorLocked } else { SpriteID::DoorUnlocked }),
+    Sprite(if is_locked { SpriteID::DoorLocked } else { SpriteID::DoorUnlocked }),
     OnGrid,
     Obstacle,
     Position(pos),
