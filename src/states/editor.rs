@@ -343,7 +343,9 @@ impl Editor {
   }
 
   fn draw_pressure_plate_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
-    draw_entity_linkage_warn(ui);
+    if self.entity_info.linked_entities.is_empty() {
+      draw_entity_linkage_warn(ui);
+    }
 
     self.draw_plain_sprite_ui(ui, |this| {
       let pressure_plate_entity =
@@ -419,7 +421,7 @@ fn draw_entity_linkage_warn(ui: &mut egui::Ui) {
 
   ui.colored_label(YELLOW_COLOR, "Has soft entity-linkage requirement")
     .on_hover_text(
-      "This asset still can be spawned, but will bear no logic and act like decoration",
+      "This asset still can be spawned, but will bear no logic and will act like a decoration",
     )
     .on_hover_cursor(egui::CursorIcon::Default);
 }
