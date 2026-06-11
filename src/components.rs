@@ -208,3 +208,92 @@ deref_component!(ActionQueue, VecDeque<ActionKind>);
 deref_component!(Tickable, InteractableHandlerKind);
 deref_component!(Facing, Direction);
 deref_component!(Locked, LockKind);
+
+pub fn downstairs_template(pos: UVec2, sprite_id: SpriteID) -> impl hecs::DynamicBundle {
+  (
+    Sprite(sprite_id),
+    Downstairs,
+    OnGrid,
+    Position(pos),
+    Tickable(InteractableHandlerKind::Downstairs),
+  )
+}
+
+pub fn saw_template(pos: UVec2, from: Direction, to: Direction) -> impl hecs::DynamicBundle {
+  (
+    Sprite(SpriteID::Saw),
+    Movable,
+    OnGrid,
+    CausesDeath,
+    Position(pos),
+    ActionQueue::default(),
+    Bouncing { from, to },
+    Tickable(InteractableHandlerKind::Saw),
+  )
+}
+
+pub fn player_template(pos: UVec2) -> impl hecs::DynamicBundle {
+  (
+    Sprite(SpriteID::Player),
+    ZIndex(1),
+    Solid,
+    Movable,
+    OnGrid,
+    Player,
+    Mortal,
+    Intelligent,
+    Position(pos),
+    ActionQueue::default(),
+  )
+}
+
+pub fn wall_template(pos: UVec2, sprite_id: SpriteID) -> impl hecs::DynamicBundle {
+  (Sprite(sprite_id), OnGrid, Obstacle, Position(pos))
+}
+
+pub fn crate_template(pos: UVec2) -> impl hecs::DynamicBundle {
+  (Sprite(SpriteID::Crate), ZIndex(1), OnGrid, Solid, Obstacle, Movable, Pushable, Position(pos))
+}
+
+pub fn fireball_template(pos: UVec2, facing_dir: Direction) -> impl hecs::DynamicBundle {
+  (
+    Sprite(SpriteID::Fireball),
+    Movable,
+    OnGrid,
+    CausesDeath,
+    Position(pos),
+    ActionQueue::default(),
+    Facing(facing_dir),
+    Tickable(InteractableHandlerKind::Fireball),
+  )
+}
+
+pub fn fireball_thrower_template(pos: UVec2, facing_dir: Direction) -> impl hecs::DynamicBundle {
+  (
+    Sprite(SpriteID::FireballThrower),
+    OnGrid,
+    Position(pos),
+    Facing(facing_dir),
+    Tickable(InteractableHandlerKind::FireballThrower),
+  )
+}
+
+pub fn pressure_plate_template(pos: UVec2) -> impl hecs::DynamicBundle {
+  (
+    Sprite(SpriteID::PressurePlate),
+    OnGrid,
+    Position(pos),
+    Tickable(InteractableHandlerKind::PressurePlate),
+  )
+}
+
+pub fn door_template(pos: UVec2, lock_kind: Option<LockKind>) -> impl hecs::DynamicBundle {
+  (
+    StatefulObjectKind::Door,
+    Sprite(if lock_kind.is_some() { SpriteID::DoorLocked } else { SpriteID::DoorUnlocked }),
+    OnGrid,
+    Obstacle,
+    Position(pos),
+    InteractableHandlerKind::Door,
+  )
+}

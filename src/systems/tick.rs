@@ -39,7 +39,7 @@ pub fn fireball_thrower_handler(state: &mut Gameplay, this_entity: hecs::Entity)
     return;
   }
 
-  let fireball = state.world_grid.spawn_fireball_at(new_pos, facing_dir);
+  let fireball = state.world_grid.spawn_entity(fireball_template(new_pos, facing_dir));
 
   // Не даем самому первому фаерболу застыть на месте без анимации.
   if let Ok(queue) = state.world_grid.query_one_mut::<&mut ActionQueue>(fireball) {

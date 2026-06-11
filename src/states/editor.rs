@@ -276,19 +276,19 @@ impl Editor {
       | SpriteID::WallHorizontalLowerSplit
       | SpriteID::WallVerticalTopEdge
       | SpriteID::WallVerticalBottomEdge) => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_wall_at(this.cursor_pos, wall_sprite_id))
+        Some(this.world_grid.spawn_entity(wall_template(this.cursor_pos, wall_sprite_id)))
       }),
       SpriteID::Crate => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_crate_at(this.cursor_pos))
+        Some(this.world_grid.spawn_entity(crate_template(this.cursor_pos)))
       }),
       SpriteID::Player => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_player_at(this.cursor_pos))
+        Some(this.world_grid.spawn_entity(player_template(this.cursor_pos)))
       }),
       SpriteID::DoorUnlocked => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_door_at(this.cursor_pos, None))
+        Some(this.world_grid.spawn_entity(door_template(this.cursor_pos, None)))
       }),
       downstairs_sprite_id @ SpriteID::DownstairsHorizontalUpper => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_downstairs_at(this.cursor_pos, downstairs_sprite_id))
+        Some(this.world_grid.spawn_entity(downstairs_template(this.cursor_pos, downstairs_sprite_id)))
       }),
       SpriteID::DoorLocked => self.draw_door_locked_ui(ui),
       SpriteID::PressurePlate => self.draw_pressure_plate_ui(ui),
@@ -313,16 +313,26 @@ impl Editor {
       }
     });
 
-    self.draw_plain_sprite_ui(ui, |this| {
-      Some(this.world_grid.spawn_door_at(this.cursor_pos, this.entity_info.lock_kind))
-    })
+    let door_locked_entity = self.draw_plain_sprite_ui(ui, |this| {
+      Some(this.world_grid.spawn_entity(door_template(this.cursor_pos, this.entity_info.lock_kind)))
+    });
+
+    if let Some(entity) = door_locked_entity
+      && let Some(lock_kind) = self.entity_info.lock_kind
+    {
+      let _ = self.world_grid.insert_one(entity, Locked(lock_kind));
+    }
+    door_locked_entity
   }
 
   fn draw_fireball_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
     draw_direction_ui("Direction", &mut self.entity_info.direction_to, ui);
 
     self.draw_plain_sprite_ui(ui, |this| {
-      Some(this.world_grid.spawn_fireball_at(this.cursor_pos, this.entity_info.direction_to?))
+      let fireball_entity = this
+        .world_grid
+        .spawn_entity(fireball_template(this.cursor_pos, this.entity_info.direction_to?));
+      Some(fireball_entity)
     })
   }
 
@@ -330,17 +340,28 @@ impl Editor {
     draw_direction_ui("Facing", &mut self.entity_info.direction_to, ui);
 
     self.draw_plain_sprite_ui(ui, |this| {
-      Some(
-        this.world_grid.spawn_fireball_thrower_at(this.cursor_pos, this.entity_info.direction_to?),
-      )
+      let firebal_thrower_entity = this
+        .world_grid
+        .spawn_entity(fireball_thrower_template(this.cursor_pos, this.entity_info.direction_to?));
+      Some(firebal_thrower_entity)
     })
   }
 
   fn draw_pressure_plate_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
-    self.draw_plain_sprite_ui(ui, |this| {
-      let linked_entities = this.entity_info.linked_entities.clone();
+    draw_entity_linkage_warn(ui);
 
-      Some(this.world_grid.spawn_pressure_plate(this.cursor_pos, Some(linked_entities)))
+    self.draw_plain_sprite_ui(ui, |this| {
+      let pressure_plate_entity =
+        this.world_grid.spawn_entity(pressure_plate_template(this.cursor_pos));
+
+      let linked_entities = &this.entity_info.linked_entities;
+
+      if !linked_entities.is_empty() {
+        let _ = this
+          .world_grid
+          .insert_one(pressure_plate_entity, LinkedEntities::new(linked_entities.clone()));
+      }
+      Some(pressure_plate_entity)
     })
   }
 
@@ -353,7 +374,7 @@ impl Editor {
     self.draw_plain_sprite_ui(ui, |this| {
       let (from, to) = this.entity_info.direction_from.zip(this.entity_info.direction_to)?;
 
-      Some(this.world_grid.spawn_saw_at(this.cursor_pos, from, to))
+      Some(this.world_grid.spawn_entity(saw_template(this.cursor_pos, from, to)))
     })
   }
 
@@ -396,6 +417,12 @@ where
     resp
   })
   .inner
+}
+
+fn draw_entity_linkage_warn(ui: &mut egui::Ui) {
+  const YELLOW_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 255, 0);
+
+  ui.colored_label(YELLOW_COLOR, "Requires entity linkage");
 }
 
 #[derive(Default)]

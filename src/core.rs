@@ -1,6 +1,5 @@
 use crate::components::*;
-use crate::lock_picking::LockKind;
-use crate::resources::{AssetManager, SpriteID};
+use crate::resources::AssetManager;
 use crate::scripting;
 use crate::serialize::WorldInfo;
 
@@ -211,120 +210,8 @@ impl WorldGrid {
   pub fn spawn_entity(&mut self, components: impl hecs::DynamicBundle) -> hecs::Entity {
     let entity = self.world.spawn(components);
 
-    if let Ok((pos, _)) = self.world.query_one::<(&Position, &OnGrid)>(entity).get() {
+    if let Ok((pos, _)) = self.world.query_one_mut::<(&Position, &OnGrid)>(entity) {
       self.grid.add_to_cell(entity, pos.x, pos.y);
-    }
-    entity
-  }
-
-  pub fn spawn_downstairs_at(&mut self, pos: UVec2, id: SpriteID) -> hecs::Entity {
-    self.spawn_entity((
-      Sprite(id),
-      Downstairs,
-      OnGrid,
-      Position(pos),
-      Tickable(InteractableHandlerKind::Downstairs),
-    ))
-  }
-
-  pub fn spawn_saw_at(&mut self, pos: UVec2, from: Direction, to: Direction) -> hecs::Entity {
-    self.spawn_entity((
-      Sprite(SpriteID::Saw),
-      Movable,
-      OnGrid,
-      CausesDeath,
-      Position(pos),
-      ActionQueue::default(),
-      Bouncing { from, to },
-      Tickable(InteractableHandlerKind::Saw),
-    ))
-  }
-
-  pub fn spawn_player_at(&mut self, pos: UVec2) -> hecs::Entity {
-    self.spawn_entity((
-      Sprite(SpriteID::Player),
-      ZIndex(1),
-      Solid,
-      Movable,
-      OnGrid,
-      Player,
-      Mortal,
-      Intelligent,
-      Position(pos),
-      ActionQueue::default(),
-    ))
-  }
-
-  pub fn spawn_wall_at(&mut self, pos: UVec2, id: SpriteID) -> hecs::Entity {
-    self.spawn_entity((Sprite(id), OnGrid, Obstacle, Position(pos)))
-  }
-
-  pub fn spawn_crate_at(&mut self, pos: UVec2) -> hecs::Entity {
-    self.spawn_entity((
-      Sprite(SpriteID::Crate),
-      ZIndex(1),
-      OnGrid,
-      Solid,
-      Obstacle,
-      Movable,
-      Pushable,
-      Position(pos),
-    ))
-  }
-
-  pub fn spawn_fireball_at(&mut self, pos: UVec2, dir: Direction) -> hecs::Entity {
-    self.spawn_entity((
-      Sprite(SpriteID::Fireball),
-      Movable,
-      OnGrid,
-      CausesDeath,
-      Position(pos),
-      ActionQueue::default(),
-      Facing(dir),
-      Tickable(InteractableHandlerKind::Fireball),
-    ))
-  }
-
-  pub fn spawn_fireball_thrower_at(&mut self, pos: UVec2, dir: Direction) -> hecs::Entity {
-    self.spawn_entity((
-      Sprite(SpriteID::FireballThrower),
-      OnGrid,
-      Position(pos),
-      Facing(dir),
-      Tickable(InteractableHandlerKind::FireballThrower),
-    ))
-  }
-
-  pub fn spawn_pressure_plate(
-    &mut self,
-    pos: UVec2,
-    linked_entities: Option<HashSet<hecs::Entity>>,
-  ) -> hecs::Entity {
-    let entity = self.spawn_entity((
-      Sprite(SpriteID::PressurePlate),
-      OnGrid,
-      Position(pos),
-      Tickable(InteractableHandlerKind::PressurePlate),
-    ));
-
-    if let Some(entities) = linked_entities {
-      let _ = self.world.insert_one(entity, LinkedEntities::new(entities));
-    }
-    entity
-  }
-
-  pub fn spawn_door_at(&mut self, pos: UVec2, lock_kind: Option<LockKind>) -> hecs::Entity {
-    let entity = self.spawn_entity((
-      StatefulObjectKind::Door,
-      Sprite(if lock_kind.is_some() { SpriteID::DoorLocked } else { SpriteID::DoorUnlocked }),
-      OnGrid,
-      Obstacle,
-      Position(pos),
-      InteractableHandlerKind::Door,
-    ));
-
-    if let Some(kind) = lock_kind {
-      let _ = self.world.insert_one(entity, Locked(kind));
     }
     entity
   }
