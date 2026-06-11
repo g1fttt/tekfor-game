@@ -422,7 +422,11 @@ where
 fn draw_entity_linkage_warn(ui: &mut egui::Ui) {
   const YELLOW_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 255, 0);
 
-  ui.colored_label(YELLOW_COLOR, "Requires entity linkage");
+  ui.colored_label(YELLOW_COLOR, "Has soft entity-linkage requirement")
+    .on_hover_text(
+      "This asset still can be spawned, but will bear no logic and act like decoration",
+    )
+    .on_hover_cursor(egui::CursorIcon::Default);
 }
 
 #[derive(Default)]
