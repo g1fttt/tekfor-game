@@ -3,15 +3,16 @@ use crate::core::WorldGrid;
 use crate::resources::ScriptProvider;
 use crate::states::gameplay::*;
 
+use hecs::{Entity, World};
 use mlua::prelude::*;
 
 pub fn update_entities_lua(
-  world: &hecs::World,
+  world: &World,
   lua: &mut LuaContext,
   assets: &impl ScriptProvider,
 ) -> LuaResult<()> {
   for (script_id, entity) in world
-    .query::<(&Script, hecs::Entity)>()
+    .query::<(&Script, Entity)>()
     .into_iter()
     .map(|(script, entity)| (script.into_inner(), entity))
   {
@@ -49,7 +50,7 @@ pub fn call_entity_lua_interact(
   world_grid: &mut WorldGrid,
   game_events: &mut GameEventManager,
   lua: &LuaContext,
-  entity: hecs::Entity,
+  entity: Entity,
 ) -> LuaResult<()> {
   let Some(interact_fn) = lua.entities_api.get(&entity).and_then(|api| api.interact.as_ref())
   else {
@@ -62,7 +63,7 @@ pub fn call_entity_lua_interact(
 fn call_entity_lua_fn(
   world_grid: &mut WorldGrid,
   game_events: &mut GameEventManager,
-  entity: hecs::Entity,
+  entity: Entity,
   lua: &Lua,
   func: &LuaFunction,
 ) -> LuaResult<()> {

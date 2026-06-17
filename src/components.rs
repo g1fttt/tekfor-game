@@ -2,6 +2,7 @@ use crate::core::Direction;
 use crate::lock_picking::LockKind;
 use crate::resources::{ScriptID, Settings, SpriteID};
 
+use hecs::Entity;
 use macroquad::math::{UVec2, Vec2};
 use serde::{Deserialize, Serialize};
 use strum::{EnumDiscriminants, EnumIter, IntoStaticStr};
@@ -126,19 +127,19 @@ pub struct Bouncing {
   pub to: Direction,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct LinkedEntities(Arc<HashSet<hecs::Entity>>);
+#[derive(Serialize, Deserialize)]
+pub struct LinkedEntities(Arc<HashSet<Entity>>);
 
 impl LinkedEntities {
-  pub fn new(entities: HashSet<hecs::Entity>) -> Self {
+  pub fn new(entities: HashSet<Entity>) -> Self {
     Self(Arc::new(entities))
   }
 
-  pub fn get_mut(&mut self) -> Option<&mut HashSet<hecs::Entity>> {
+  pub fn get_mut(&mut self) -> Option<&mut HashSet<Entity>> {
     Arc::get_mut(&mut self.0)
   }
 
-  pub fn strong_clone(&self) -> Arc<HashSet<hecs::Entity>> {
+  pub fn strong_clone(&self) -> Arc<HashSet<Entity>> {
     Arc::clone(&self.0)
   }
 }

@@ -1,6 +1,9 @@
 use crate::components::*;
 use crate::resources::SpriteID;
 
+use hecs::{CommandBuffer, Entity, EntityBuilder, EntityRef, World};
+use serde::{Deserialize, Serialize};
+
 use macroquad::logging as log;
 use macroquad::math::UVec2;
 
@@ -12,12 +15,12 @@ use std::{fs, io};
 
 const WORLD_FORMAT_VERSION: u16 = 1;
 
-pub fn save_world(path: impl AsRef<Path>, info: &WorldInfo, world: &hecs::World) -> io::Result<()> {
+pub fn save_world(path: impl AsRef<Path>, info: &WorldInfo, world: &World) -> io::Result<()> {
   let bytes = serialize_world_info(info, world).unwrap();
   fs::write(path, bytes)
 }
 
-pub fn load_world(path: impl AsRef<Path>) -> io::Result<(WorldInfo, hecs::World)> {
+pub fn load_world(path: impl AsRef<Path>) -> io::Result<(WorldInfo, World)> {
   let bytes = fs::read(path)?;
   let (info, mut world) = deserialize_world_info(&bytes).unwrap();
 
@@ -25,10 +28,10 @@ pub fn load_world(path: impl AsRef<Path>) -> io::Result<(WorldInfo, hecs::World)
     todo!("Implement migration logic");
   }
 
-  let mut cmd_buf = hecs::CommandBuffer::new();
+  let mut cmd_buf = CommandBuffer::new();
 
   for (sprite_id, pos, entity) in world
-    .query::<(&Sprite, &Position, &OnGrid, hecs::Entity)>()
+    .query::<(&Sprite, &Position, &OnGrid, Entity)>()
     .into_iter()
     .map(|(s, p, _, e)| (s.into_inner(), p.into_inner(), e))
   {
@@ -53,9 +56,9 @@ struct MissingMandatoryComponent;
 fn patch_missing_components(
   sprite_id: SpriteID,
   pos: UVec2,
-  entity_ref: hecs::EntityRef,
-) -> Result<hecs::EntityBuilder, MissingMandatoryComponent> {
-  let mut entity_builder = hecs::EntityBuilder::new();
+  entity_ref: EntityRef,
+) -> Result<EntityBuilder, MissingMandatoryComponent> {
+  let mut entity_builder = EntityBuilder::new();
 
   match sprite_id {
     SpriteID::WallHorizontal
@@ -98,7 +101,7 @@ fn patch_missing_components(
   Ok(entity_builder)
 }
 
-fn serialize_world_info(info: &WorldInfo, world: &hecs::World) -> Result<Vec<u8>, EncodeError> {
+fn serialize_world_info(info: &WorldInfo, world: &World) -> Result<Vec<u8>, EncodeError> {
   let mut full_info = WorldInfoFull::new(info.clone());
 
   let mut serializer = rmp_serde::Serializer::new(&mut full_info.world_bytes);
@@ -107,7 +110,7 @@ fn serialize_world_info(info: &WorldInfo, world: &hecs::World) -> Result<Vec<u8>
   rmp_serde::to_vec_named(&full_info)
 }
 
-fn deserialize_world_info(bytes: &[u8]) -> Result<(WorldInfo, hecs::World), DecodeError> {
+fn deserialize_world_info(bytes: &[u8]) -> Result<(WorldInfo, World), DecodeError> {
   let full_info: WorldInfoFull = rmp_serde::from_slice(bytes)?;
 
   let mut deserializer = rmp_serde::Deserializer::new(full_info.world_bytes.as_slice());
@@ -125,7 +128,7 @@ const fn default_format_version() -> u16 {
   WORLD_FORMAT_VERSION
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub struct WorldInfo {
   #[serde(default = "default_format_version")]
   format_version: u16,
@@ -145,7 +148,7 @@ impl From<WorldInfoFull> for WorldInfo {
   }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct WorldInfoFull {
   #[serde(flatten)]
   info: WorldInfo,
@@ -158,7 +161,7 @@ impl WorldInfoFull {
   }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 enum ComponentID {
   Animation,
   ActionQueue,
@@ -183,7 +186,7 @@ enum ComponentID {
   Intelligent,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 enum MaybeComponentID {
   Valid(ComponentID),
@@ -342,9 +345,9 @@ impl_deserialize_context!(
 
 pub(super) mod uvec2_serde {
   use macroquad::math::{UVec2, uvec2};
-  use serde::{Deserialize, Serialize};
+  use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-  #[derive(serde::Serialize, serde::Deserialize)]
+  #[derive(Serialize, Deserialize)]
   struct Shadow {
     x: u32,
     y: u32,
@@ -352,7 +355,7 @@ pub(super) mod uvec2_serde {
 
   pub fn serialize<S>(value: &UVec2, serializer: S) -> Result<S::Ok, S::Error>
   where
-    S: serde::Serializer,
+    S: Serializer,
   {
     let shadow = Shadow { x: value.x, y: value.y };
     shadow.serialize(serializer)
@@ -360,7 +363,7 @@ pub(super) mod uvec2_serde {
 
   pub fn deserialize<'de, D>(deserializer: D) -> Result<UVec2, D::Error>
   where
-    D: serde::Deserializer<'de>,
+    D: Deserializer<'de>,
   {
     let shadow = Shadow::deserialize(deserializer)?;
     Ok(uvec2(shadow.x, shadow.y))

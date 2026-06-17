@@ -3,7 +3,8 @@ use crate::resources::AssetManager;
 use crate::scripting;
 use crate::serialize::WorldInfo;
 
-use mlua::Lua;
+use hecs::{DynamicBundle, Entity, NoSuchEntity, World};
+use mlua::prelude::*;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
 
@@ -90,13 +91,13 @@ pub enum Direction {
 }
 
 struct Grid {
-  cells: Vec<HashSet<hecs::Entity>>,
+  cells: Vec<HashSet<Entity>>,
   width: u32,
   height: u32,
 }
 
 impl Grid {
-  fn new(width: u32, height: u32, world: &mut hecs::World) -> Self {
+  fn new(width: u32, height: u32, world: &mut World) -> Self {
     let capacity = (width * height) as usize;
     let mut cells = Vec::with_capacity(capacity);
 
@@ -106,7 +107,7 @@ impl Grid {
 
     let mut this = Self { cells, width, height };
 
-    for (pos, entity) in world.query_mut::<(&Position, hecs::Entity)>() {
+    for (pos, entity) in world.query_mut::<(&Position, Entity)>() {
       this.add_to_cell(entity, pos.x, pos.y);
     }
     this
@@ -149,17 +150,17 @@ impl Grid {
     self.height
   }
 
-  fn get_cell(&self, x: u32, y: u32) -> Option<Iter<'_, hecs::Entity>> {
+  fn get_cell(&self, x: u32, y: u32) -> Option<Iter<'_, Entity>> {
     self.index(x, y).map(|idx| self.cells[idx].iter())
   }
 
-  fn add_to_cell(&mut self, entity: hecs::Entity, x: u32, y: u32) {
+  fn add_to_cell(&mut self, entity: Entity, x: u32, y: u32) {
     if let Some(idx) = self.index(x, y) {
       self.cells[idx].insert(entity);
     }
   }
 
-  fn remove_from_cell(&mut self, entity: hecs::Entity, x: u32, y: u32) {
+  fn remove_from_cell(&mut self, entity: Entity, x: u32, y: u32) {
     if let Some(idx) = self.index(x, y) {
       self.cells[idx].retain(|&e| e != entity);
     }
@@ -175,11 +176,11 @@ impl Grid {
 
 pub struct WorldGrid {
   grid: Grid,
-  world: hecs::World,
+  world: World,
 }
 
 impl WorldGrid {
-  pub fn new(info: &WorldInfo, mut world: hecs::World) -> Self {
+  pub fn new(info: &WorldInfo, mut world: World) -> Self {
     let grid = Grid::new(info.width, info.height, &mut world);
 
     Self { grid, world }
@@ -197,19 +198,19 @@ impl WorldGrid {
     self.grid.resize(new_width, new_height);
   }
 
-  pub fn get_cell(&self, x: u32, y: u32) -> Option<Iter<'_, hecs::Entity>> {
+  pub fn get_cell(&self, x: u32, y: u32) -> Option<Iter<'_, Entity>> {
     self.grid.get_cell(x, y)
   }
 
-  pub fn add_to_cell(&mut self, entity: hecs::Entity, x: u32, y: u32) {
+  pub fn add_to_cell(&mut self, entity: Entity, x: u32, y: u32) {
     self.grid.add_to_cell(entity, x, y);
   }
 
-  pub fn remove_from_cell(&mut self, entity: hecs::Entity, x: u32, y: u32) {
+  pub fn remove_from_cell(&mut self, entity: Entity, x: u32, y: u32) {
     self.grid.remove_from_cell(entity, x, y);
   }
 
-  pub fn spawn_entity(&mut self, components: impl hecs::DynamicBundle) -> hecs::Entity {
+  pub fn spawn_entity(&mut self, components: impl DynamicBundle) -> Entity {
     let entity = self.world.spawn(components);
 
     if let Ok((pos, _)) = self.world.query_one_mut::<(&Position, &OnGrid)>(entity) {
@@ -218,7 +219,7 @@ impl WorldGrid {
     entity
   }
 
-  pub fn despawn_entity(&mut self, entity: hecs::Entity) -> Result<(), hecs::NoSuchEntity> {
+  pub fn despawn_entity(&mut self, entity: Entity) -> Result<(), NoSuchEntity> {
     if let Ok(pos) = self.world.get::<&Position>(entity).map(|pos| pos.into_inner()) {
       self.grid.remove_from_cell(entity, pos.x, pos.y);
     };
@@ -246,7 +247,7 @@ impl WorldGrid {
 
 impl Default for WorldGrid {
   fn default() -> Self {
-    Self::new(&WorldInfo::default(), hecs::World::new())
+    Self::new(&WorldInfo::default(), World::new())
   }
 }
 
@@ -257,7 +258,7 @@ impl DerefMut for WorldGrid {
 }
 
 impl Deref for WorldGrid {
-  type Target = hecs::World;
+  type Target = World;
 
   fn deref(&self) -> &Self::Target {
     &self.world

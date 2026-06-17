@@ -1,6 +1,7 @@
 use crate::components::Sprite;
 use crate::core::{CELL_SIZE, Direction};
 
+use hecs::{Entity, World};
 use macroquad::math::*;
 
 use std::path::Path;
@@ -10,11 +11,11 @@ pub fn global_pos(pos: UVec2) -> Vec2 {
   vec2(pos.x as f32, pos.y as f32) * CELL_SIZE
 }
 
-pub fn entity_sprite_text_default(world: &hecs::World, entity: hecs::Entity) -> &'static str {
+pub fn entity_sprite_text_default(world: &World, entity: Entity) -> &'static str {
   entity_sprite_text(world, entity).unwrap_or("? (Unknown)")
 }
 
-pub fn entity_sprite_text(world: &hecs::World, entity: hecs::Entity) -> Option<&'static str> {
+pub fn entity_sprite_text(world: &World, entity: Entity) -> Option<&'static str> {
   world.get::<&Sprite>(entity).map(|sprite| sprite.into_inner().into()).ok()
 }
 

@@ -8,6 +8,7 @@ use crate::systems::draw::draw_sprites;
 use crate::utils;
 
 use egui_macroquad::egui;
+use hecs::Entity;
 use strum::IntoEnumIterator;
 
 use macroquad::logging as log;
@@ -21,7 +22,7 @@ pub struct Editor {
   world_grid: WorldGrid,
   world_info: WorldInfo,
   cursor_pos: UVec2,
-  selected_entity: Option<hecs::Entity>,
+  selected_entity: Option<Entity>,
   should_capture_keyboard: bool,
   should_return_to_menu: bool,
   is_in_linkage_mode: bool,
@@ -148,7 +149,7 @@ impl Editor {
     self.selected_entity = self.last_entity_under_cursor();
   }
 
-  fn last_entity_under_cursor(&self) -> Option<hecs::Entity> {
+  fn last_entity_under_cursor(&self) -> Option<Entity> {
     let cell_entities = self.world_grid.get_cell(self.cursor_pos.x, self.cursor_pos.y)?;
     cell_entities.last().copied()
   }
@@ -299,7 +300,7 @@ impl Editor {
     }
   }
 
-  fn draw_door_locked_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
+  fn draw_door_locked_ui(&mut self, ui: &mut egui::Ui) -> Option<Entity> {
     let selected_text: &'static str = self.entity_info.lock_kind.map(Into::into).unwrap_or("...");
 
     egui::ComboBox::from_label("Lock kind").selected_text(selected_text).show_ui(ui, |ui| {
@@ -322,7 +323,7 @@ impl Editor {
     door_locked_entity
   }
 
-  fn draw_fireball_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
+  fn draw_fireball_ui(&mut self, ui: &mut egui::Ui) -> Option<Entity> {
     draw_direction_ui("Direction", &mut self.entity_info.direction_to, ui);
 
     self.draw_plain_sprite_ui(ui, |this| {
@@ -333,7 +334,7 @@ impl Editor {
     })
   }
 
-  fn draw_fireball_thrower_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
+  fn draw_fireball_thrower_ui(&mut self, ui: &mut egui::Ui) -> Option<Entity> {
     draw_direction_ui("Facing", &mut self.entity_info.direction_to, ui);
 
     self.draw_plain_sprite_ui(ui, |this| {
@@ -344,7 +345,7 @@ impl Editor {
     })
   }
 
-  fn draw_pressure_plate_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
+  fn draw_pressure_plate_ui(&mut self, ui: &mut egui::Ui) -> Option<Entity> {
     if self.entity_info.linked_entities.is_empty() {
       draw_entity_linkage_warn(ui);
     }
@@ -364,7 +365,7 @@ impl Editor {
     })
   }
 
-  fn draw_saw_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
+  fn draw_saw_ui(&mut self, ui: &mut egui::Ui) -> Option<Entity> {
     ui.horizontal(|ui| {
       draw_direction_ui("From", &mut self.entity_info.direction_from, ui);
       draw_direction_ui("To", &mut self.entity_info.direction_to, ui);
@@ -380,8 +381,8 @@ impl Editor {
   fn draw_plain_sprite_ui(
     &mut self,
     ui: &mut egui::Ui,
-    f: impl Fn(&mut Self) -> Option<hecs::Entity>,
-  ) -> Option<hecs::Entity> {
+    f: impl Fn(&mut Self) -> Option<Entity>,
+  ) -> Option<Entity> {
     if ui.button("Spawn entity").clicked() { f(self) } else { None }
   }
 }
@@ -425,7 +426,7 @@ fn draw_entity_linkage_warn(ui: &mut egui::Ui) {
 #[derive(Default)]
 pub struct EntityInfo {
   sprite_id: Option<SpriteID>,
-  linked_entities: HashSet<hecs::Entity>,
+  linked_entities: HashSet<Entity>,
   direction_from: Option<Direction>,
   direction_to: Option<Direction>,
   lock_kind: Option<LockKind>,

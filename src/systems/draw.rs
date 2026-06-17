@@ -1,12 +1,13 @@
 use crate::components::*;
 use crate::resources::{SpriteID, TextureProvider};
 
+use hecs::{Entity, World};
 use macroquad::prelude::*;
 
-pub fn draw_sprites(world: &hecs::World, assets: &impl TextureProvider) {
+pub fn draw_sprites(world: &World, assets: &impl TextureProvider) {
   let mut render_queue = Vec::<(u32, Vec2, Sprite)>::new();
 
-  for (pos, sprite, entity) in world.query::<(&Position, &Sprite, hecs::Entity)>().iter() {
+  for (pos, sprite, entity) in world.query::<(&Position, &Sprite, Entity)>().iter() {
     let global_pos = if let Ok(anim) = world.get::<&Animation>(entity)
       && let AnimationKind::Move { start, end } = anim.kind()
     {
@@ -30,9 +31,8 @@ pub fn draw_sprites(world: &hecs::World, assets: &impl TextureProvider) {
   }
 }
 
-pub fn update_sprites(world: &hecs::World) {
-  let mut stateful_sprited_objects =
-    world.query::<(&StatefulObjectKind, &mut Sprite, hecs::Entity)>();
+pub fn update_sprites(world: &World) {
+  let mut stateful_sprited_objects = world.query::<(&StatefulObjectKind, &mut Sprite, Entity)>();
 
   for (kind, sprite, entity) in stateful_sprited_objects.iter() {
     let sprite_id = match (kind, world.satisfies::<&Locked>(entity)) {
@@ -44,10 +44,10 @@ pub fn update_sprites(world: &hecs::World) {
   }
 }
 
-pub fn update_animations(world: &mut hecs::World) {
+pub fn update_animations(world: &mut World) {
   let mut finished_entities = Vec::new();
 
-  for (anim, entity) in world.query_mut::<(&mut Animation, hecs::Entity)>() {
+  for (anim, entity) in world.query_mut::<(&mut Animation, Entity)>() {
     if anim.update(get_frame_time()) {
       finished_entities.push(entity);
     }
@@ -58,7 +58,7 @@ pub fn update_animations(world: &mut hecs::World) {
   }
 }
 
-pub fn is_any_animation_active(world: &hecs::World) -> bool {
+pub fn is_any_animation_active(world: &World) -> bool {
   world.query::<&Animation>().iter().any(|anim| !anim.is_finished())
 }
 

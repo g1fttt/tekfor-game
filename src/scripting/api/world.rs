@@ -1,28 +1,29 @@
 use crate::components::*;
-use crate::core::{self, Direction};
+use crate::core::{Direction, WorldGrid};
 
+use hecs::{ComponentRef, Entity};
 use mlua::prelude::*;
 use serde::Serialize;
 
 use std::ops::Deref;
 
-impl core::WorldGrid {
+impl WorldGrid {
   fn get_component<'a, T>(&'a self, lua: &Lua, lua_entity: LuaValue) -> LuaResult<LuaValue>
   where
-    T: hecs::ComponentRef<'a>,
-    <T as hecs::ComponentRef<'a>>::Ref: Deref,
-    <<T as hecs::ComponentRef<'a>>::Ref as Deref>::Target: Serialize,
+    T: ComponentRef<'a>,
+    <T as ComponentRef<'a>>::Ref: Deref,
+    <<T as ComponentRef<'a>>::Ref as Deref>::Target: Serialize,
   {
-    let entity = lua.from_value::<hecs::Entity>(lua_entity)?;
+    let entity = lua.from_value::<Entity>(lua_entity)?;
 
-    match self.get::<'a, T>(entity).ok() {
+    match self.get::<T>(entity).ok() {
       Some(comp) => lua.to_value(&*comp),
       None => Ok(LuaNil),
     }
   }
 }
 
-impl LuaUserData for core::WorldGrid {
+impl LuaUserData for WorldGrid {
   fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
     methods.add_method("has_obstacle_at", |lua, this, pos: LuaValue| {
       let pos = lua.from_value::<Position>(pos)?;
@@ -31,13 +32,13 @@ impl LuaUserData for core::WorldGrid {
     });
 
     methods.add_method("is_player", |lua, this, entity: LuaValue| {
-      let entity = lua.from_value::<hecs::Entity>(entity)?;
+      let entity = lua.from_value::<Entity>(entity)?;
 
       Ok(this.satisfies::<&Player>(entity))
     });
 
     methods.add_method("is_solid", |lua, this, entity: LuaValue| {
-      let entity = lua.from_value::<hecs::Entity>(entity)?;
+      let entity = lua.from_value::<Entity>(entity)?;
 
       Ok(this.satisfies::<&Solid>(entity))
     });
@@ -63,7 +64,7 @@ impl LuaUserData for core::WorldGrid {
     });
 
     methods.add_method_mut("switch_bouncing_dir", |lua, this, entity: LuaValue| {
-      let entity = lua.from_value::<hecs::Entity>(entity)?;
+      let entity = lua.from_value::<Entity>(entity)?;
 
       if let Ok(mut bouncing) = this.get::<&mut Bouncing>(entity) {
         let temp = bouncing.from;
@@ -77,7 +78,7 @@ impl LuaUserData for core::WorldGrid {
     });
 
     methods.add_method_mut("add_action", |lua, this, (entity, action): (LuaValue, LuaValue)| {
-      let entity = lua.from_value::<hecs::Entity>(entity)?;
+      let entity = lua.from_value::<Entity>(entity)?;
 
       if let Ok(queue) = this.query_one_mut::<&mut ActionQueue>(entity) {
         let action_kind = lua.from_value::<ActionKind>(action)?;
@@ -90,7 +91,7 @@ impl LuaUserData for core::WorldGrid {
     methods.add_method("get_cell", |lua, this, pos: LuaValue| {
       let pos = lua.from_value::<Position>(pos)?;
 
-      let entities: Option<Vec<hecs::Entity>> =
+      let entities: Option<Vec<Entity>> =
         this.get_cell(pos.x, pos.y).map(|it| it.cloned().collect());
 
       lua.to_value(&entities)

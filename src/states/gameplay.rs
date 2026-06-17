@@ -9,7 +9,10 @@ use crate::systems::lua::*;
 use crate::utils;
 
 use egui_macroquad::egui;
+use hecs::{Entity, World};
 use mlua::prelude::*;
+use serde::{Deserialize, Serialize};
+use strum::{EnumDiscriminants, EnumIter, IntoStaticStr};
 
 use macroquad::audio::play_sound_once;
 use macroquad::logging as log;
@@ -24,7 +27,7 @@ pub struct Gameplay {
   lua_ctx: LuaContext,
   asset_manager: AssetManager,
   script_path: Option<String>,
-  player_entities: Vec<hecs::Entity>,
+  player_entities: Vec<Entity>,
   tick_state: TickState,
   is_level_finished: bool,
   should_return_to_menu: bool,
@@ -32,13 +35,13 @@ pub struct Gameplay {
 }
 
 impl Gameplay {
-  pub fn new(lua: Lua, asset_manager: AssetManager, info: WorldInfo, world: hecs::World) -> Self {
+  pub fn new(lua: Lua, asset_manager: AssetManager, info: WorldInfo, world: World) -> Self {
     let mut world_grid = WorldGrid::new(&info, world);
 
     let player_entities = world_grid
-      .query_mut::<(&Player, hecs::Entity)>()
+      .query_mut::<(&Player, Entity)>()
       .into_iter()
-      .map(|(_, entity)| entity)
+      .map(|(_player, entity)| entity)
       .collect();
 
     Self {
@@ -159,7 +162,7 @@ impl Gameplay {
 
   fn mark_dead(&mut self) {
     for (_, &pos, attacker) in
-      self.world_grid.query::<(&CausesDeath, &Position, hecs::Entity)>().into_iter()
+      self.world_grid.query::<(&CausesDeath, &Position, Entity)>().into_iter()
     {
       let Some(cell_entities) = self.world_grid.get_cell(pos.x, pos.y) else {
         continue;
@@ -213,7 +216,7 @@ impl Gameplay {
   fn process_actions(&mut self) -> bool {
     let mut actions = Vec::new();
 
-    for (queue, entity) in self.world_grid.query::<(&mut ActionQueue, hecs::Entity)>().iter() {
+    for (queue, entity) in self.world_grid.query::<(&mut ActionQueue, Entity)>().iter() {
       if let Some(action_kind) = queue.pop_front() {
         actions.push((action_kind, entity));
       }
@@ -293,7 +296,7 @@ impl Gameplay {
     }
   }
 
-  fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) {
+  fn move_entity(&mut self, entity: Entity, opts: MoveOptions) {
     if !self.world_grid.satisfies::<(&Movable, &OnGrid)>(entity) {
       return;
     }
@@ -304,7 +307,7 @@ impl Gameplay {
 
     let new_pos = utils::advance_pos_in_direction(pos, opts.dir);
 
-    let Some(cell_entities): Option<Vec<hecs::Entity>> =
+    let Some(cell_entities): Option<Vec<Entity>> =
       self.world_grid.get_cell(new_pos.x, new_pos.y).map(|it| it.cloned().collect())
     else {
       return;
@@ -335,7 +338,7 @@ impl Gameplay {
     }
   }
 
-  fn move_entity_to_pos(&mut self, entity: hecs::Entity, x: u32, y: u32) -> bool {
+  fn move_entity_to_pos(&mut self, entity: Entity, x: u32, y: u32) -> bool {
     if self.world_grid.has_component_at::<&Obstacle>(x, y) {
       return false;
     }
@@ -394,7 +397,7 @@ pub struct EntityLuaApi {
 
 pub struct LuaContext {
   lua: Lua,
-  pub entities_api: HashMap<hecs::Entity, EntityLuaApi>,
+  pub entities_api: HashMap<Entity, EntityLuaApi>,
 }
 
 impl LuaContext {
@@ -411,22 +414,22 @@ impl Deref for LuaContext {
   }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, strum::EnumDiscriminants, Debug, PartialEq)]
-#[strum_discriminants(derive(serde::Serialize, strum::IntoStaticStr, strum::EnumIter))]
+#[derive(Serialize, Deserialize, EnumDiscriminants, Debug, PartialEq)]
+#[strum_discriminants(derive(Serialize, IntoStaticStr, EnumIter))]
 #[strum_discriminants(name(GameEventType))]
 #[serde(tag = "type", content = "data")]
 pub enum GameEvent {
-  DoorLock(hecs::Entity),
-  DoorUnlock(hecs::Entity),
-  DoorOpen(hecs::Entity),
-  EntityWentDowntairs(hecs::Entity),
-  EntityInteracted(hecs::Entity),
-  EntityDeath { target: hecs::Entity, attacker: hecs::Entity },
+  DoorLock(Entity),
+  DoorUnlock(Entity),
+  DoorOpen(Entity),
+  EntityWentDowntairs(Entity),
+  EntityInteracted(Entity),
+  EntityDeath { target: Entity, attacker: Entity },
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct GameEventManager {
   events: Vec<GameEvent>,
-  // TODO: Реализовать listener'ов, которые по сути своей просто mlua::Function.
 }
 
 impl GameEventManager {

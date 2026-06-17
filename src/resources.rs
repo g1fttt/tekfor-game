@@ -1,6 +1,8 @@
 use directories::BaseDirs;
 use mlua::Lua;
 use ron::ser::PrettyConfig;
+use serde::{Deserialize, Serialize};
+use strum::{EnumIter, IntoStaticStr};
 
 use macroquad::audio::{Sound, load_sound};
 use macroquad::experimental::collections::storage;
@@ -13,17 +15,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::{env, fs, io};
 
-#[derive(
-  serde::Serialize,
-  serde::Deserialize,
-  strum::IntoStaticStr,
-  strum::EnumIter,
-  Clone,
-  Copy,
-  PartialEq,
-  Eq,
-  Hash,
-)]
+#[derive(Serialize, Deserialize, IntoStaticStr, EnumIter, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SpriteID {
   Player,
   DoorLocked,
@@ -64,7 +56,7 @@ pub enum SoundID {
   Death,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum ScriptID {
   Fireball,
   FireballThrower,
@@ -233,7 +225,7 @@ impl AssetManagerInner {
 const VERTEX_SHADER: &str = include_str!("materials/vertex.glsl");
 const CRT_SHADER: &str = include_str!("materials/crt.glsl");
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
   pub animation_speed_multiplier: f32,

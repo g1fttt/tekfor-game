@@ -1,15 +1,12 @@
-use crate::components::ActionType;
+use crate::components::{ActionType, Position};
 use crate::core::Direction;
 use crate::lock_picking::LockKind;
 use crate::states::gameplay::GameEventType;
+use crate::utils;
 
-use macroquad::logging as log;
 use mlua::prelude::*;
 use serde::Serialize;
 use strum::IntoEnumIterator;
-
-use std::fs;
-use std::path::Path;
 
 pub fn create() -> LuaResult<Lua> {
   let lua = Lua::new();
@@ -19,11 +16,27 @@ pub fn create() -> LuaResult<Lua> {
   add_enum::<ActionType>(&lua)?;
   add_enum::<GameEventType>(&lua)?;
 
-  preload_module(&lua, "utils", "api_modules/utils.lua")?;
+  preload_module(&lua, "utils", preload_utils_module)?;
 
   Ok(lua)
 }
 
+fn preload_utils_module(lua: &Lua, module: &LuaTable) -> LuaResult<()> {
+  let advance_pos_in_direction = lua.create_function(|lua, (pos, dir): (LuaValue, LuaValue)| {
+    let pos = lua.from_value::<Position>(pos)?;
+    let dir = lua.from_value::<Direction>(dir)?;
+
+    let new_pos = utils::advance_pos_in_direction(pos.into_inner(), dir);
+
+    lua.to_value(&Position(new_pos))
+  })?;
+
+  module.set("advance_pos_in_direction", advance_pos_in_direction)?;
+
+  Ok(())
+}
+
+#[deprecated]
 pub fn call_func<R: FromLuaMulti>(
   lua: &Lua,
   key: impl IntoLua,
@@ -50,19 +63,19 @@ where
   lua.globals().set(enum_name, enum_table)
 }
 
-fn preload_module(lua: &Lua, key: impl IntoLua, path: impl AsRef<Path>) -> LuaResult<()> {
+fn preload_module(
+  lua: &Lua,
+  key: impl IntoLua,
+  loader: impl Fn(&Lua, &LuaTable) -> LuaResult<()> + 'static,
+) -> LuaResult<()> {
   let package: LuaTable = lua.globals().get("package")?;
   let preload: LuaTable = package.get("preload")?;
 
-  let bytes = match fs::read(path.as_ref()) {
-    Ok(b) => b,
-    Err(err) => {
-      log::error!("Unable to find provided module: {}", err);
-      return Ok(());
-    }
-  };
+  let loader = lua.create_function(move |lua, _: ()| {
+    let module = lua.create_table()?;
 
-  let loader = lua.create_function(move |lua, _: ()| lua.load(bytes.clone()).eval::<LuaValue>())?;
+    loader(lua, &module)
+  })?;
 
   preload.set(key, loader)
 }
