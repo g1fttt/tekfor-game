@@ -1,9 +1,9 @@
 use crate::components::*;
-use crate::resources::{AssetManager, SpriteID};
+use crate::resources::{SpriteID, TextureProvider};
 
 use macroquad::prelude::*;
 
-pub fn draw_sprites(world: &hecs::World, asset_manager: &AssetManager) {
+pub fn draw_sprites(world: &hecs::World, assets: &impl TextureProvider) {
   let mut render_queue = Vec::<(u32, Vec2, Sprite)>::new();
 
   for (pos, sprite, entity) in world.query::<(&Position, &Sprite, hecs::Entity)>().iter() {
@@ -24,7 +24,7 @@ pub fn draw_sprites(world: &hecs::World, asset_manager: &AssetManager) {
 
   for (_, global_pos, sprite) in render_queue.into_iter() {
     let sprite_id = sprite.into_inner();
-    let texture = asset_manager.get_texture(sprite_id);
+    let texture = assets.get_texture(sprite_id);
 
     draw_texture(texture, global_pos.x, global_pos.y, WHITE);
   }

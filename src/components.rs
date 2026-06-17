@@ -1,12 +1,10 @@
 use crate::core::Direction;
 use crate::lock_picking::LockKind;
-use crate::resources::{Settings, SpriteID};
-use crate::states::gameplay::Gameplay;
-use crate::systems::tick::*;
+use crate::resources::{ScriptID, Settings, SpriteID};
 
 use macroquad::math::{UVec2, Vec2};
 use serde::{Deserialize, Serialize};
-use strum::{EnumIter, IntoStaticStr};
+use strum::{EnumDiscriminants, EnumIter, IntoStaticStr};
 
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
@@ -72,7 +70,10 @@ impl Animation {
   }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, EnumDiscriminants)]
+#[strum_discriminants(derive(Serialize, IntoStaticStr, EnumIter))]
+#[strum_discriminants(name(ActionType))]
+#[serde(tag = "type", content = "data")]
 pub enum ActionKind {
   Move(MoveOptions),
 }
@@ -80,7 +81,9 @@ pub enum ActionKind {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MoveOptions {
   pub dir: Direction,
+  #[serde(default)]
   pub can_push: bool,
+  #[serde(default)]
   pub despawn_if_collided: bool,
 }
 
@@ -94,7 +97,7 @@ impl MoveOptions {
 pub struct ActionQueue(VecDeque<ActionKind>);
 
 // Перечисление объектов, которые в зависимости от состояния - могут иметь разные спрайты.
-#[derive(EnumIter, IntoStaticStr, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub enum StatefulObjectKind {
   Door,
 }
@@ -115,37 +118,15 @@ pub struct ZIndex(pub u32);
 pub struct Sprite(pub SpriteID);
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Script(pub ScriptID);
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Bouncing {
   pub from: Direction,
   pub to: Direction,
 }
 
-type InteractableHandler = fn(&mut Gameplay, this_entity: hecs::Entity);
-
-#[derive(EnumIter, IntoStaticStr, Serialize, Deserialize, Clone, Copy, PartialEq)]
-pub enum InteractableHandlerKind {
-  Fireball,
-  FireballThrower,
-  PressurePlate,
-  Door,
-  Saw,
-  Downstairs,
-}
-
-impl InteractableHandlerKind {
-  pub fn to_fn(self) -> InteractableHandler {
-    match self {
-      InteractableHandlerKind::Fireball => fireball_handler,
-      InteractableHandlerKind::FireballThrower => fireball_thrower_handler,
-      InteractableHandlerKind::PressurePlate => pressure_plate_handler,
-      InteractableHandlerKind::Door => door_handler,
-      InteractableHandlerKind::Saw => saw_handler,
-      InteractableHandlerKind::Downstairs => downstairs_handler,
-    }
-  }
-}
-
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct LinkedEntities(Arc<HashSet<hecs::Entity>>);
 
 impl LinkedEntities {
@@ -163,9 +144,6 @@ impl LinkedEntities {
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub struct Tickable(pub InteractableHandlerKind);
-
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub struct Facing(pub Direction);
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -204,19 +182,13 @@ pub struct Intelligent;
 deref_component!(Position, UVec2);
 deref_component!(ZIndex, u32);
 deref_component!(Sprite, SpriteID);
+deref_component!(Script, ScriptID);
 deref_component!(ActionQueue, VecDeque<ActionKind>);
-deref_component!(Tickable, InteractableHandlerKind);
 deref_component!(Facing, Direction);
 deref_component!(Locked, LockKind);
 
 pub fn downstairs_template(pos: UVec2, sprite_id: SpriteID) -> impl hecs::DynamicBundle {
-  (
-    Sprite(sprite_id),
-    Downstairs,
-    OnGrid,
-    Position(pos),
-    Tickable(InteractableHandlerKind::Downstairs),
-  )
+  (Sprite(sprite_id), Downstairs, OnGrid, Position(pos), Script(ScriptID::Downstairs))
 }
 
 pub fn saw_template(pos: UVec2, from: Direction, to: Direction) -> impl hecs::DynamicBundle {
@@ -228,7 +200,7 @@ pub fn saw_template(pos: UVec2, from: Direction, to: Direction) -> impl hecs::Dy
     Position(pos),
     ActionQueue::default(),
     Bouncing { from, to },
-    Tickable(InteractableHandlerKind::Saw),
+    Script(ScriptID::Saw),
   )
 }
 
@@ -264,7 +236,7 @@ pub fn fireball_template(pos: UVec2, facing_dir: Direction) -> impl hecs::Dynami
     Position(pos),
     ActionQueue::default(),
     Facing(facing_dir),
-    Tickable(InteractableHandlerKind::Fireball),
+    Script(ScriptID::Fireball),
   )
 }
 
@@ -274,17 +246,12 @@ pub fn fireball_thrower_template(pos: UVec2, facing_dir: Direction) -> impl hecs
     OnGrid,
     Position(pos),
     Facing(facing_dir),
-    Tickable(InteractableHandlerKind::FireballThrower),
+    Script(ScriptID::FireballThrower),
   )
 }
 
 pub fn pressure_plate_template(pos: UVec2) -> impl hecs::DynamicBundle {
-  (
-    Sprite(SpriteID::PressurePlate),
-    OnGrid,
-    Position(pos),
-    Tickable(InteractableHandlerKind::PressurePlate),
-  )
+  (Sprite(SpriteID::PressurePlate), OnGrid, Position(pos), Script(ScriptID::PressurePlate))
 }
 
 pub fn door_template(pos: UVec2, is_locked: bool) -> impl hecs::DynamicBundle {
@@ -294,6 +261,6 @@ pub fn door_template(pos: UVec2, is_locked: bool) -> impl hecs::DynamicBundle {
     OnGrid,
     Obstacle,
     Position(pos),
-    InteractableHandlerKind::Door,
+    Script(ScriptID::Door),
   )
 }

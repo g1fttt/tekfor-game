@@ -1,7 +1,6 @@
 use directories::BaseDirs;
+use mlua::Lua;
 use ron::ser::PrettyConfig;
-use serde::{Deserialize, Serialize};
-use strum::{EnumIter, IntoStaticStr};
 
 use macroquad::audio::{Sound, load_sound};
 use macroquad::experimental::collections::storage;
@@ -10,10 +9,21 @@ use macroquad::prelude::*;
 
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::{env, fs, io};
 
-#[derive(Serialize, Deserialize, IntoStaticStr, EnumIter, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(
+  serde::Serialize,
+  serde::Deserialize,
+  strum::IntoStaticStr,
+  strum::EnumIter,
+  Clone,
+  Copy,
+  PartialEq,
+  Eq,
+  Hash,
+)]
 pub enum SpriteID {
   Player,
   DoorLocked,
@@ -54,35 +64,88 @@ pub enum SoundID {
   Death,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum ScriptID {
+  Fireball,
+  FireballThrower,
+  PressurePlate,
+  Door,
+  Saw,
+  Downstairs,
+}
+
+pub struct AssetManager(Rc<AssetManagerInner>);
+
+impl AssetManager {
+  pub async fn load_all(lua: &Lua) -> anyhow::Result<Self> {
+    Ok(Self(Rc::new(AssetManagerInner::load_all(lua).await?)))
+  }
+
+  pub fn strong_clone(&self) -> Self {
+    Self(Rc::clone(&self.0))
+  }
+}
+
+impl TextureProvider for AssetManager {
+  fn get_texture(&self, id: SpriteID) -> &Texture2D {
+    self.0.textures.get(&id).unwrap()
+  }
+}
+
+impl SoundProvider for AssetManager {
+  fn get_sound(&self, id: SoundID) -> &Sound {
+    self.0.sounds.get(&id).unwrap()
+  }
+}
+
+impl MaterialProvider for AssetManager {
+  fn get_material(&self, id: MaterialID) -> &Material {
+    self.0.materials.get(&id).unwrap()
+  }
+}
+
+impl ScriptProvider for AssetManager {
+  fn get_script(&self, id: ScriptID) -> &[u8] {
+    self.0.scripts.get(&id).map(|bytes| bytes.as_slice()).unwrap()
+  }
+}
+
+pub trait TextureProvider {
+  fn get_texture(&self, id: SpriteID) -> &Texture2D;
+}
+
+pub trait SoundProvider {
+  fn get_sound(&self, id: SoundID) -> &Sound;
+}
+
+pub trait MaterialProvider {
+  fn get_material(&self, id: MaterialID) -> &Material;
+}
+
+pub trait ScriptProvider {
+  fn get_script(&self, id: ScriptID) -> &[u8];
+}
+
 type Textures = HashMap<SpriteID, Texture2D>;
 type Materials = HashMap<MaterialID, Material>;
 type Sounds = HashMap<SoundID, Sound>;
+type Scripts = HashMap<ScriptID, Vec<u8>>;
 
-pub struct AssetManager {
+struct AssetManagerInner {
   textures: Textures,
   sounds: Sounds,
   materials: Materials,
+  scripts: Scripts,
 }
 
-impl AssetManager {
-  pub async fn load_all() -> Result<Self, macroquad::Error> {
+impl AssetManagerInner {
+  async fn load_all(lua: &Lua) -> anyhow::Result<Self> {
     Ok(Self {
       textures: Self::load_textures().await?,
       sounds: Self::load_sounds().await?,
       materials: Self::load_materials()?,
+      scripts: Self::load_scritps(lua)?,
     })
-  }
-
-  pub fn get_texture(&self, id: SpriteID) -> &Texture2D {
-    self.textures.get(&id).expect("Failed to obtain texture due to unknown asset id")
-  }
-
-  pub fn get_sound(&self, id: SoundID) -> &Sound {
-    self.sounds.get(&id).expect("Failed to obtain sound due to unknown asset id")
-  }
-
-  pub fn get_material(&self, id: MaterialID) -> &Material {
-    self.materials.get(&id).expect("Failed to obtain material due to unknown asset id")
   }
 
   #[rustfmt::skip]
@@ -112,7 +175,7 @@ impl AssetManager {
     textures.insert(SpriteID::WallVerticalTopEdge, load_texture("textures/wall-vertical-top-edge.png").await?);
     textures.insert(SpriteID::WallVerticalBottomEdge, load_texture("textures/wall-vertical-bottom-edge.png").await?);
     textures.insert(SpriteID::DownstairsHorizontalUpper, load_texture("textures/downstairs-horizontal-upper.png").await?);
-    
+
     Ok(textures)
   }
 
@@ -148,12 +211,29 @@ impl AssetManager {
 
     Ok(materials)
   }
+
+  fn load_scritps(lua: &Lua) -> anyhow::Result<Scripts> {
+    fn load_bytecode(lua: &Lua, path: impl AsRef<Path>) -> anyhow::Result<Vec<u8>> {
+      Ok(lua.load(fs::read(path)?).into_function()?.dump(false))
+    }
+
+    let mut scripts = Scripts::new();
+
+    scripts.insert(ScriptID::Fireball, load_bytecode(lua, "scripts/fireball.lua")?);
+    scripts.insert(ScriptID::FireballThrower, load_bytecode(lua, "scripts/fireball_thrower.lua")?);
+    scripts.insert(ScriptID::PressurePlate, load_bytecode(lua, "scripts/pressure_plate.lua")?);
+    scripts.insert(ScriptID::Saw, load_bytecode(lua, "scripts/saw.lua")?);
+    scripts.insert(ScriptID::Downstairs, load_bytecode(lua, "scripts/downstairs.lua")?);
+    scripts.insert(ScriptID::Door, load_bytecode(lua, "scripts/door.lua")?);
+
+    Ok(scripts)
+  }
 }
 
 const VERTEX_SHADER: &str = include_str!("materials/vertex.glsl");
 const CRT_SHADER: &str = include_str!("materials/crt.glsl");
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Settings {
   pub animation_speed_multiplier: f32,

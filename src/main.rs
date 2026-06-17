@@ -21,6 +21,8 @@ use macroquad::miniquad::date::now;
 use macroquad::prelude::*;
 use macroquad::rand::srand;
 
+use crate::states::editor::Editor;
+
 // Набор звуков:         https://ci.itch.io/400-sounds-pack
 //                       https://nihil-existentia.itch.io/free-audio-asset-collection
 // Палитра для спрайтов: ARQ4
@@ -100,7 +102,7 @@ fn update_and_draw(
       editor.planned()
     }
     GameState::Gameplay(gameplay) => {
-      gameplay.update(state)?;
+      gameplay.update()?;
       gameplay.draw(state);
       gameplay.planned()
     }
@@ -112,12 +114,19 @@ fn update_and_draw(
 
   *current_state = match planned {
     PlannedGameState::Menu => GameState::Menu(Menu::default()),
-    PlannedGameState::Editor => GameState::Editor(Box::default()),
+    PlannedGameState::Editor => {
+      GameState::Editor(Box::new(Editor::new(state.asset_manager.strong_clone())))
+    }
     PlannedGameState::Gameplay(world_info) => {
       let lua = state.lua.clone();
       let (info, world) = *world_info;
 
-      GameState::Gameplay(Box::new(Gameplay::new(lua, info, world)))
+      GameState::Gameplay(Box::new(Gameplay::new(
+        lua,
+        state.asset_manager.strong_clone(),
+        info,
+        world,
+      )))
     }
   };
   Ok(())

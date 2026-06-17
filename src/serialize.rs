@@ -1,9 +1,6 @@
 use crate::components::*;
 use crate::resources::SpriteID;
 
-use serde::{Deserialize, Serialize};
-use strum::{EnumIter, IntoStaticStr};
-
 use macroquad::logging as log;
 use macroquad::math::UVec2;
 
@@ -128,7 +125,7 @@ const fn default_format_version() -> u16 {
   WORLD_FORMAT_VERSION
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 pub struct WorldInfo {
   #[serde(default = "default_format_version")]
   format_version: u16,
@@ -148,7 +145,7 @@ impl From<WorldInfoFull> for WorldInfo {
   }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct WorldInfoFull {
   #[serde(flatten)]
   info: WorldInfo,
@@ -161,7 +158,7 @@ impl WorldInfoFull {
   }
 }
 
-#[derive(EnumIter, IntoStaticStr, Serialize, Deserialize, PartialEq, Clone, Copy)]
+#[derive(serde::Serialize, serde::Deserialize)]
 enum ComponentID {
   Animation,
   ActionQueue,
@@ -169,8 +166,7 @@ enum ComponentID {
   Position,
   ZIndex,
   Sprite,
-  InteractableHandlerKind,
-  Tickable,
+  Script,
   Facing,
   Locked,
   Movable,
@@ -185,6 +181,13 @@ enum ComponentID {
   Downstairs,
   LinkedEntities,
   Intelligent,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+enum MaybeComponentID {
+  Valid(ComponentID),
+  Unknown(String),
 }
 
 macro_rules! impl_serialize_context {
@@ -243,15 +246,22 @@ macro_rules! impl_deserialize_context {
 
         let mut batch = hecs::ColumnBatchType::new();
 
-        while let Some(id) = seq.next_element()? {
-          match id {
-            $(
-              $comp_id => {
-               batch.add::<$comp_type>();
+        while let Some(maybe) = seq.next_element::<MaybeComponentID>()? {
+          match maybe {
+            MaybeComponentID::Valid(id) => {
+              match id {
+                $(
+                  $comp_id => {
+                   batch.add::<$comp_type>();
+                  }
+                )*
               }
-            )*
+              self.components.push(id);
+            }
+            MaybeComponentID::Unknown(string) => {
+              macroquad::logging::error!("Unknown component id found during world deserialization: {}", string);
+            }
           }
-          self.components.push(id);
         }
         Ok(batch)
       }
@@ -288,8 +298,7 @@ impl_serialize_context!(
   ComponentID::Position => Position,
   ComponentID::ZIndex => ZIndex,
   ComponentID::Sprite => Sprite,
-  ComponentID::InteractableHandlerKind => InteractableHandlerKind,
-  ComponentID::Tickable => Tickable,
+  ComponentID::Script => Script,
   ComponentID::Facing => Facing,
   ComponentID::Locked => Locked,
   ComponentID::Movable => Movable,
@@ -314,8 +323,7 @@ impl_deserialize_context!(
   ComponentID::Position => Position,
   ComponentID::ZIndex => ZIndex,
   ComponentID::Sprite => Sprite,
-  ComponentID::InteractableHandlerKind => InteractableHandlerKind,
-  ComponentID::Tickable => Tickable,
+  ComponentID::Script => Script,
   ComponentID::Facing => Facing,
   ComponentID::Locked => Locked,
   ComponentID::Movable => Movable,
@@ -334,9 +342,9 @@ impl_deserialize_context!(
 
 pub(super) mod uvec2_serde {
   use macroquad::math::{UVec2, uvec2};
-  use serde::{Deserialize, Deserializer, Serialize, Serializer};
+  use serde::{Deserialize, Serialize};
 
-  #[derive(Serialize, Deserialize)]
+  #[derive(serde::Serialize, serde::Deserialize)]
   struct Shadow {
     x: u32,
     y: u32,
@@ -344,7 +352,7 @@ pub(super) mod uvec2_serde {
 
   pub fn serialize<S>(value: &UVec2, serializer: S) -> Result<S::Ok, S::Error>
   where
-    S: Serializer,
+    S: serde::Serializer,
   {
     let shadow = Shadow { x: value.x, y: value.y };
     shadow.serialize(serializer)
@@ -352,7 +360,7 @@ pub(super) mod uvec2_serde {
 
   pub fn deserialize<'de, D>(deserializer: D) -> Result<UVec2, D::Error>
   where
-    D: Deserializer<'de>,
+    D: serde::Deserializer<'de>,
   {
     let shadow = Shadow::deserialize(deserializer)?;
     Ok(uvec2(shadow.x, shadow.y))

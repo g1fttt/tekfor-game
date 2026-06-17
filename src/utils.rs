@@ -1,5 +1,5 @@
 use crate::components::Sprite;
-use crate::core::{Direction, Grid};
+use crate::core::{CELL_SIZE, Direction};
 
 use macroquad::math::*;
 
@@ -7,7 +7,7 @@ use std::path::Path;
 use std::{fs, io};
 
 pub fn global_pos(pos: UVec2) -> Vec2 {
-  vec2(pos.x as f32, pos.y as f32) * Grid::CELL_SIZE
+  vec2(pos.x as f32, pos.y as f32) * CELL_SIZE
 }
 
 pub fn entity_sprite_text_default(world: &hecs::World, entity: hecs::Entity) -> &'static str {

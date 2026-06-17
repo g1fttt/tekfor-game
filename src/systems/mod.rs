@@ -1,2 +1,2 @@
 pub mod draw;
-pub mod tick;
+pub mod lua;

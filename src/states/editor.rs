@@ -1,7 +1,7 @@
 use crate::components::*;
-use crate::core::{Direction, Game, Grid, WorldGrid};
+use crate::core::{CELL_SIZE, Direction, Game, WorldGrid};
 use crate::lock_picking::LockKind;
-use crate::resources::SpriteID;
+use crate::resources::{AssetManager, SpriteID};
 use crate::serialize::{self, WorldInfo};
 use crate::states::PlannedGameState;
 use crate::systems::draw::draw_sprites;
@@ -16,6 +16,7 @@ use macroquad::prelude::*;
 use std::collections::HashSet;
 
 pub struct Editor {
+  asset_manager: AssetManager,
   level_path: String,
   world_grid: WorldGrid,
   world_info: WorldInfo,
@@ -28,8 +29,9 @@ pub struct Editor {
 }
 
 impl Editor {
-  pub fn new() -> Self {
+  pub fn new(asset_manager: AssetManager) -> Self {
     Self {
+      asset_manager,
       level_path: String::new(),
       world_grid: WorldGrid::default(),
       world_info: WorldInfo::default(),
@@ -43,8 +45,8 @@ impl Editor {
   }
 
   pub fn draw(&self, state: &Game) {
-    state.with_camera(None, |state| {
-      draw_sprites(&self.world_grid, &state.asset_manager);
+    state.with_camera(None, || {
+      draw_sprites(&self.world_grid, &self.asset_manager);
 
       self.draw_cursor();
     });
@@ -160,12 +162,12 @@ impl Editor {
   }
 
   fn draw_cursor(&self) {
-    let x = self.cursor_pos.x as f32 * Grid::CELL_SIZE;
-    let y = self.cursor_pos.y as f32 * Grid::CELL_SIZE;
+    let x = self.cursor_pos.x as f32 * CELL_SIZE;
+    let y = self.cursor_pos.y as f32 * CELL_SIZE;
 
     let color = if self.is_in_linkage_mode { GREEN } else { WHITE };
 
-    draw_rectangle_lines(x, y, Grid::CELL_SIZE, Grid::CELL_SIZE, 2.0, color);
+    draw_rectangle_lines(x, y, CELL_SIZE, CELL_SIZE, 2.0, color);
   }
 
   fn draw_current_entity_ui(&mut self, ui: &mut egui::Ui) {
@@ -381,12 +383,6 @@ impl Editor {
     f: impl Fn(&mut Self) -> Option<hecs::Entity>,
   ) -> Option<hecs::Entity> {
     if ui.button("Spawn entity").clicked() { f(self) } else { None }
-  }
-}
-
-impl Default for Editor {
-  fn default() -> Self {
-    Self::new()
   }
 }
 

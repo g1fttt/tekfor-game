@@ -16,9 +16,11 @@ use std::ops::{Deref, DerefMut};
 use std::collections::HashSet;
 use std::collections::hash_set::Iter;
 
+pub const CELL_SIZE: f32 = 32.0;
+
 pub struct Game {
-  pub asset_manager: AssetManager,
   pub lua: Lua,
+  pub asset_manager: AssetManager,
   #[expect(dead_code, reason = "Отсутствие публичных методов")]
   audio_context: AudioContext,
   camera: Camera,
@@ -26,9 +28,11 @@ pub struct Game {
 
 impl Game {
   pub async fn new() -> anyhow::Result<Self> {
+    let lua = scripting::engine::create()?;
+
     Ok(Self {
-      asset_manager: AssetManager::load_all().await?,
-      lua: scripting::engine::create()?,
+      asset_manager: AssetManager::load_all(&lua).await?,
+      lua,
       audio_context: AudioContext::new(),
       camera: Camera::new(Vec2::ZERO, 0.005),
     })
@@ -37,7 +41,7 @@ impl Game {
   pub fn with_camera(
     &self,
     render_target: Option<RenderTarget>,
-    f: impl Fn(&Game),
+    f: impl Fn(),
   ) -> Option<Texture2D> {
     let mut camera: Camera2D = (&self.camera).into();
 
@@ -49,7 +53,7 @@ impl Game {
 
     set_camera(&camera);
     {
-      f(self);
+      f();
     }
     set_default_camera();
 
@@ -85,16 +89,14 @@ pub enum Direction {
   West,
 }
 
-pub struct Grid {
+struct Grid {
   cells: Vec<HashSet<hecs::Entity>>,
   width: u32,
   height: u32,
 }
 
 impl Grid {
-  pub const CELL_SIZE: f32 = 32.0;
-
-  pub fn new(width: u32, height: u32, world: &mut hecs::World) -> Self {
+  fn new(width: u32, height: u32, world: &mut hecs::World) -> Self {
     let capacity = (width * height) as usize;
     let mut cells = Vec::with_capacity(capacity);
 
@@ -110,7 +112,7 @@ impl Grid {
     this
   }
 
-  pub fn resize(&mut self, new_width: u32, new_height: u32) {
+  fn resize(&mut self, new_width: u32, new_height: u32) {
     let new_capacity = (new_width * new_height) as usize;
     let old_capacity = self.cells.capacity();
 
@@ -139,25 +141,25 @@ impl Grid {
     self.height = new_height;
   }
 
-  pub fn width(&self) -> u32 {
+  fn width(&self) -> u32 {
     self.width
   }
 
-  pub fn height(&self) -> u32 {
+  fn height(&self) -> u32 {
     self.height
   }
 
-  pub fn get_cell(&self, x: u32, y: u32) -> Option<Iter<'_, hecs::Entity>> {
+  fn get_cell(&self, x: u32, y: u32) -> Option<Iter<'_, hecs::Entity>> {
     self.index(x, y).map(|idx| self.cells[idx].iter())
   }
 
-  pub fn add_to_cell(&mut self, entity: hecs::Entity, x: u32, y: u32) {
+  fn add_to_cell(&mut self, entity: hecs::Entity, x: u32, y: u32) {
     if let Some(idx) = self.index(x, y) {
       self.cells[idx].insert(entity);
     }
   }
 
-  pub fn remove_from_cell(&mut self, entity: hecs::Entity, x: u32, y: u32) {
+  fn remove_from_cell(&mut self, entity: hecs::Entity, x: u32, y: u32) {
     if let Some(idx) = self.index(x, y) {
       self.cells[idx].retain(|&e| e != entity);
     }

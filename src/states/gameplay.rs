@@ -1,35 +1,38 @@
 use crate::components::*;
 use crate::core::{Direction, Game, WorldGrid};
-use crate::resources::{AssetManager, MaterialID, Settings, SoundID};
+use crate::lock_picking::LockKind;
+use crate::resources::*;
 use crate::serialize::WorldInfo;
 use crate::states::PlannedGameState;
 use crate::systems::draw::*;
-use crate::{scripting, utils};
+use crate::systems::lua::*;
+use crate::utils;
 
 use egui_macroquad::egui;
-use mlua::Lua;
+use mlua::prelude::*;
 
 use macroquad::audio::play_sound_once;
 use macroquad::logging as log;
 use macroquad::prelude::*;
 
-use std::fs;
+use std::collections::HashMap;
+use std::ops::Deref;
 
 pub struct Gameplay {
   pub world_grid: WorldGrid,
-  pub game_events: Vec<GameEvent>,
-  pub lua: Lua,
+  pub game_events: GameEventManager,
+  lua_ctx: LuaContext,
+  asset_manager: AssetManager,
   script_path: Option<String>,
   player_entities: Vec<hecs::Entity>,
   tick_state: TickState,
   is_level_finished: bool,
   should_return_to_menu: bool,
   hit_intensity: f32,
-  abyss: Abyss,
 }
 
 impl Gameplay {
-  pub fn new(lua: Lua, info: WorldInfo, world: hecs::World) -> Self {
+  pub fn new(lua: Lua, asset_manager: AssetManager, info: WorldInfo, world: hecs::World) -> Self {
     let mut world_grid = WorldGrid::new(&info, world);
 
     let player_entities = world_grid
@@ -40,15 +43,15 @@ impl Gameplay {
 
     Self {
       world_grid,
-      game_events: Vec::new(),
-      lua,
+      game_events: GameEventManager::new(),
+      lua_ctx: LuaContext::new(lua),
+      asset_manager,
       script_path: None,
       player_entities,
       tick_state: TickState::ProcessingLogic,
       is_level_finished: false,
       should_return_to_menu: false,
       hit_intensity: 0.0,
-      abyss: Abyss::default(),
     }
   }
 
@@ -87,35 +90,13 @@ impl Gameplay {
   pub fn draw(&self, state: &Game) {
     let screen_texture = render_target(screen_width() as u32, screen_height() as u32);
 
-    let render_target = state.with_camera(Some(screen_texture), |state| {
-      draw_sprites(&self.world_grid, &state.asset_manager);
+    let render_target = state.with_camera(Some(screen_texture), || {
+      draw_sprites(&self.world_grid, &self.asset_manager);
     });
 
     if let Some(rt) = render_target {
-      self.draw_crt_effect(&rt, &state.asset_manager);
+      draw_crt_effect(&self.asset_manager, &rt, self.hit_intensity);
     }
-  }
-
-  fn draw_crt_effect(&self, render_target: &Texture2D, asset_manager: &AssetManager) {
-    let width = screen_width();
-    let height = screen_height();
-
-    let crt = asset_manager.get_material(MaterialID::CRT);
-    crt.set_uniform("Resolution", vec2(width, height));
-    crt.set_uniform("Intensity", self.hit_intensity);
-    crt.set_uniform("CrtIntensity", Settings::get().crt_intensity);
-
-    gl_use_material(crt);
-
-    draw_texture_ex(
-      render_target,
-      0.0,
-      height,
-      WHITE,
-      DrawTextureParams { dest_size: Some(vec2(width, -height)), ..Default::default() },
-    );
-
-    gl_use_default_material();
   }
 
   pub fn planned(&self) -> Option<PlannedGameState> {
@@ -126,16 +107,14 @@ impl Gameplay {
     None
   }
 
-  pub fn update(&mut self, state: &Game) -> mlua::Result<()> {
+  pub fn update(&mut self) -> LuaResult<()> {
     self.update_effects();
 
     update_sprites(&self.world_grid);
 
     match self.tick_state {
       TickState::ProcessingLogic => {
-        self.do_logical_tick(&state.asset_manager);
-        self.update_lua(&state.lua)?;
-
+        self.do_logical_tick();
         self.tick_state = TickState::WaitingForAction;
       }
       TickState::WaitingForAction => {
@@ -164,23 +143,18 @@ impl Gameplay {
     }
   }
 
-  fn do_logical_tick(&mut self, asset_manager: &AssetManager) {
-    self.update_tickable();
-    self.mark_dead();
-    self.process_events(asset_manager);
+  fn update_lua(&mut self) -> LuaResult<()> {
+    update_entities_lua(&self.world_grid, &mut self.lua_ctx, &self.asset_manager)?;
+    call_entity_lua_update(&mut self.world_grid, &mut self.game_events, &self.lua_ctx)
   }
 
-  fn update_tickable(&mut self) {
-    let tickable: Vec<(InteractableHandlerKind, _)> = self
-      .world_grid
-      .query::<(&Tickable, hecs::Entity)>()
-      .into_iter()
-      .map(|(tickable, entity)| (tickable.into_inner(), entity))
-      .collect();
+  fn do_logical_tick(&mut self) {
+    if let Err(err) = self.update_lua() {
+      log::error!("Error occured during `update_lua` call: {}", err);
+    };
 
-    for (handler, entity) in tickable.into_iter() {
-      handler.to_fn()(self, entity);
-    }
+    self.mark_dead();
+    self.process_events();
   }
 
   fn mark_dead(&mut self) {
@@ -196,25 +170,9 @@ impl Gameplay {
           continue;
         }
 
-        self.game_events.push(GameEvent::EntityDeath { target, attacker })
+        self.game_events.add(GameEvent::EntityDeath { target, attacker })
       }
     }
-  }
-
-  fn update_lua(&mut self, lua: &Lua) -> mlua::Result<()> {
-    let Some(ref path) = self.script_path else {
-      return Ok(());
-    };
-
-    match fs::read(path) {
-      Ok(bytes) => {
-        lua.load(bytes).exec()?;
-
-        scripting::api::on_abyss_call(lua, &mut self.abyss)?;
-      }
-      Err(err) => log::error!("Failed to read currently selected script: {}", err),
-    }
-    Ok(())
   }
 
   fn update_input(&mut self) -> bool {
@@ -273,15 +231,23 @@ impl Gameplay {
     true
   }
 
-  fn process_events(&mut self, asset_manager: &AssetManager) {
-    while let Some(event) = self.game_events.pop() {
+  fn process_events(&mut self) {
+    while let Some(event) = self.game_events.take_last() {
       let sound_id = match event {
-        GameEvent::DoorLock => SoundID::Lock,
-        GameEvent::DoorUnlock => SoundID::Unlock,
+        GameEvent::DoorLock(entity) => {
+          let _ = self.world_grid.insert_one(entity, Locked(LockKind::Basic));
+
+          Some(SoundID::Lock)
+        }
+        GameEvent::DoorUnlock(entity) => {
+          let _ = self.world_grid.remove_one::<Locked>(entity);
+
+          Some(SoundID::Unlock)
+        }
         GameEvent::DoorOpen(entity) => {
           let _ = self.world_grid.despawn_entity(entity);
 
-          SoundID::DoorOpen
+          Some(SoundID::DoorOpen)
         }
         GameEvent::EntityWentDowntairs(entity) => {
           let entity_sprite_name = utils::entity_sprite_text_default(&self.world_grid, entity);
@@ -292,7 +258,20 @@ impl Gameplay {
 
           self.is_level_finished = true;
 
-          SoundID::LevelFinished
+          Some(SoundID::LevelFinished)
+        }
+        GameEvent::EntityInteracted(entity) => {
+          let result = call_entity_lua_interact(
+            &mut self.world_grid,
+            &mut self.game_events,
+            &self.lua_ctx,
+            entity,
+          );
+
+          if let Err(err) = result {
+            log::error!("Error occured during `call_entity_lua_interact` call: {}", err);
+          }
+          None
         }
         GameEvent::EntityDeath { target, attacker } => {
           let target_sprite_name = utils::entity_sprite_text_default(&self.world_grid, target);
@@ -304,11 +283,13 @@ impl Gameplay {
 
           self.hit_intensity = 1.0;
 
-          SoundID::Death
+          Some(SoundID::Death)
         }
       };
 
-      play_sound_once(asset_manager.get_sound(sound_id));
+      if let Some(id) = sound_id {
+        play_sound_once(self.asset_manager.get_sound(id));
+      }
     }
   }
 
@@ -329,12 +310,15 @@ impl Gameplay {
       return;
     };
 
-    if self.world_grid.satisfies::<&Intelligent>(entity) {
-      self.interact_with_entities(&cell_entities);
-    }
+    for cell_entity in cell_entities {
+      // FIXME:
+      if self.world_grid.satisfies::<&Intelligent>(entity) {
+        self.game_events.add(GameEvent::EntityInteracted(cell_entity))
+      }
 
-    if opts.can_push {
-      self.push_entities(&cell_entities, opts.dir);
+      if opts.can_push && self.world_grid.satisfies::<&Pushable>(cell_entity) {
+        self.move_entity(entity, MoveOptions::new(opts.dir));
+      }
     }
 
     let entity_move_success = self.move_entity_to_pos(entity, new_pos.x, new_pos.y);
@@ -348,27 +332,6 @@ impl Gameplay {
       let _ = self.world_grid.insert_one(entity, Animation::new(move_animation));
     } else if !entity_move_success && opts.despawn_if_collided {
       let _ = self.world_grid.despawn_entity(entity);
-    }
-  }
-
-  fn push_entities(&mut self, entities: &[hecs::Entity], dir: Direction) {
-    for &entity in entities.iter() {
-      if !self.world_grid.satisfies::<(&Movable, &Pushable)>(entity) {
-        continue;
-      }
-
-      self.move_entity(entity, MoveOptions::new(dir));
-    }
-  }
-
-  fn interact_with_entities(&mut self, entities: &[hecs::Entity]) {
-    for &entity in entities.iter() {
-      let Ok(handler) = self.world_grid.get::<&InteractableHandlerKind>(entity).map(|h| h.to_fn())
-      else {
-        continue;
-      };
-
-      handler(self, entity);
     }
   }
 
@@ -396,19 +359,96 @@ impl Gameplay {
   }
 }
 
-#[derive(Default)]
-pub struct Abyss {}
-
-pub enum GameEvent {
-  DoorLock,
-  DoorUnlock,
-  DoorOpen(hecs::Entity),
-  EntityWentDowntairs(hecs::Entity),
-  EntityDeath { target: hecs::Entity, attacker: hecs::Entity },
-}
-
 enum TickState {
   ProcessingLogic,
   WaitingForAction,
   Animating,
+}
+
+fn draw_crt_effect(assets: &impl MaterialProvider, render_target: &Texture2D, intensity: f32) {
+  let width = screen_width();
+  let height = screen_height();
+
+  let crt = assets.get_material(MaterialID::CRT);
+  crt.set_uniform("Resolution", vec2(width, height));
+  crt.set_uniform("Intensity", intensity);
+  crt.set_uniform("CrtIntensity", Settings::get().crt_intensity);
+
+  gl_use_material(crt);
+  {
+    draw_texture_ex(
+      render_target,
+      0.0,
+      height,
+      WHITE,
+      DrawTextureParams { dest_size: Some(vec2(width, -height)), ..Default::default() },
+    );
+  }
+  gl_use_default_material();
+}
+
+pub struct EntityLuaApi {
+  pub update: Option<LuaFunction>,
+  pub interact: Option<LuaFunction>,
+}
+
+pub struct LuaContext {
+  lua: Lua,
+  pub entities_api: HashMap<hecs::Entity, EntityLuaApi>,
+}
+
+impl LuaContext {
+  fn new(lua: Lua) -> Self {
+    Self { lua, entities_api: HashMap::new() }
+  }
+}
+
+impl Deref for LuaContext {
+  type Target = Lua;
+
+  fn deref(&self) -> &Self::Target {
+    &self.lua
+  }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, strum::EnumDiscriminants, Debug, PartialEq)]
+#[strum_discriminants(derive(serde::Serialize, strum::IntoStaticStr, strum::EnumIter))]
+#[strum_discriminants(name(GameEventType))]
+#[serde(tag = "type", content = "data")]
+pub enum GameEvent {
+  DoorLock(hecs::Entity),
+  DoorUnlock(hecs::Entity),
+  DoorOpen(hecs::Entity),
+  EntityWentDowntairs(hecs::Entity),
+  EntityInteracted(hecs::Entity),
+  EntityDeath { target: hecs::Entity, attacker: hecs::Entity },
+}
+
+pub struct GameEventManager {
+  events: Vec<GameEvent>,
+  // TODO: Реализовать listener'ов, которые по сути своей просто mlua::Function.
+}
+
+impl GameEventManager {
+  pub fn new() -> Self {
+    Self { events: Vec::new() }
+  }
+
+  pub fn add(&mut self, event: GameEvent) {
+    self.events.push(event)
+  }
+
+  pub fn take_last(&mut self) -> Option<GameEvent> {
+    self.events.pop()
+  }
+
+  pub fn as_slice(&self) -> &[GameEvent] {
+    self.events.as_slice()
+  }
+}
+
+impl Default for GameEventManager {
+  fn default() -> Self {
+    Self::new()
+  }
 }
