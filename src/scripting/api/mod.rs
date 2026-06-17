@@ -1,22 +1,6 @@
 mod game_events;
 mod world;
 
-use crate::lock_picking::LockKind;
-use crate::lock_picking::basic::Basic as BasicLockPick;
-
-use mlua::prelude::*;
-
-pub fn on_lock_pick(lua: &Lua, kind: LockKind) -> LuaResult<bool> {
-  Ok(match kind {
-    LockKind::Basic => BasicLockPick::default().is_valid_with(|seq| {
-      let kind = lua.to_value(&kind)?;
-      let data = lua.to_value(seq)?;
-
-      super::engine::call_func::<bool>(lua, "on_lock_pick", (kind, data))
-    }),
-  })
-}
-
 #[cfg(test)]
 mod tests {
   use crate::components::Position;
@@ -25,7 +9,7 @@ mod tests {
   use crate::serialize::WorldInfo;
   use crate::states::gameplay::{GameEvent, GameEventManager};
 
-  use macroquad::math::UVec2;
+  use macroquad::math::{UVec2, uvec2};
   use mlua::prelude::*;
 
   fn with_world_grid<R: FromLuaMulti>(
@@ -102,7 +86,7 @@ mod tests {
     let (lua, world_grid, _, lua_game_events) = with_world_grid(CODE)?;
     let game_events = lua.from_value::<Vec<GameEvent>>(lua_game_events)?;
 
-    let door = *world_grid.get_cell(1, 2).and_then(|mut it| it.next()).unwrap();
+    let door = *world_grid.get_cell(uvec2(1, 2)).and_then(|mut it| it.next()).unwrap();
 
     assert_eq!(
       game_events,

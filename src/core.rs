@@ -108,7 +108,7 @@ impl Grid {
     let mut this = Self { cells, width, height };
 
     for (pos, entity) in world.query_mut::<(&Position, Entity)>() {
-      this.add_to_cell(entity, pos.x, pos.y);
+      this.add_to_cell(entity, pos.into_inner());
     }
     this
   }
@@ -150,27 +150,27 @@ impl Grid {
     self.height
   }
 
-  fn get_cell(&self, x: u32, y: u32) -> Option<Iter<'_, Entity>> {
-    self.index(x, y).map(|idx| self.cells[idx].iter())
+  fn get_cell(&self, pos: UVec2) -> Option<Iter<'_, Entity>> {
+    self.index(pos).map(|idx| self.cells[idx].iter())
   }
 
-  fn add_to_cell(&mut self, entity: Entity, x: u32, y: u32) {
-    if let Some(idx) = self.index(x, y) {
+  fn add_to_cell(&mut self, entity: Entity, pos: UVec2) {
+    if let Some(idx) = self.index(pos) {
       self.cells[idx].insert(entity);
     }
   }
 
-  fn remove_from_cell(&mut self, entity: Entity, x: u32, y: u32) {
-    if let Some(idx) = self.index(x, y) {
+  fn remove_from_cell(&mut self, entity: Entity, pos: UVec2) {
+    if let Some(idx) = self.index(pos) {
       self.cells[idx].retain(|&e| e != entity);
     }
   }
 
-  fn index(&self, x: u32, y: u32) -> Option<usize> {
-    if x >= self.width || y >= self.height {
+  fn index(&self, pos: UVec2) -> Option<usize> {
+    if pos.x >= self.width || pos.y >= self.height {
       return None;
     }
-    Some((y * self.width + x) as usize)
+    Some((pos.y * self.width + pos.x) as usize)
   }
 }
 
@@ -198,30 +198,30 @@ impl WorldGrid {
     self.grid.resize(new_width, new_height);
   }
 
-  pub fn get_cell(&self, x: u32, y: u32) -> Option<Iter<'_, Entity>> {
-    self.grid.get_cell(x, y)
+  pub fn get_cell(&self, pos: UVec2) -> Option<Iter<'_, Entity>> {
+    self.grid.get_cell(pos)
   }
 
-  pub fn add_to_cell(&mut self, entity: Entity, x: u32, y: u32) {
-    self.grid.add_to_cell(entity, x, y);
+  pub fn add_to_cell(&mut self, entity: Entity, pos: UVec2) {
+    self.grid.add_to_cell(entity, pos);
   }
 
-  pub fn remove_from_cell(&mut self, entity: Entity, x: u32, y: u32) {
-    self.grid.remove_from_cell(entity, x, y);
+  pub fn remove_from_cell(&mut self, entity: Entity, pos: UVec2) {
+    self.grid.remove_from_cell(entity, pos);
   }
 
   pub fn spawn_entity(&mut self, components: impl DynamicBundle) -> Entity {
     let entity = self.world.spawn(components);
 
     if let Ok((pos, _)) = self.world.query_one_mut::<(&Position, &OnGrid)>(entity) {
-      self.grid.add_to_cell(entity, pos.x, pos.y);
+      self.grid.add_to_cell(entity, pos.into_inner());
     }
     entity
   }
 
   pub fn despawn_entity(&mut self, entity: Entity) -> Result<(), NoSuchEntity> {
-    if let Ok(pos) = self.world.get::<&Position>(entity).map(|pos| pos.into_inner()) {
-      self.grid.remove_from_cell(entity, pos.x, pos.y);
+    if let Ok(pos) = self.world.get::<&Position>(entity) {
+      self.grid.remove_from_cell(entity, pos.into_inner());
     };
 
     for linked_entities in self
@@ -236,12 +236,18 @@ impl WorldGrid {
     self.world.despawn(entity)
   }
 
-  pub fn has_component_at<Q: hecs::Query>(&self, x: u32, y: u32) -> bool {
-    let Some(mut cell_entities) = self.grid.get_cell(x, y) else {
+  pub fn has_component_at<Q: hecs::Query>(&self, pos: UVec2) -> bool {
+    let Some(mut cell_entities) = self.grid.get_cell(pos) else {
       return false;
     };
 
     cell_entities.any(|&ent| self.world.satisfies::<Q>(ent))
+  }
+
+  pub fn push_player_action(&mut self, action_kind: ActionKind) {
+    for (_, queue) in self.query_mut::<(&Player, &mut ActionQueue)>() {
+      queue.push_back(action_kind.clone());
+    }
   }
 }
 

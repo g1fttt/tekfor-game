@@ -36,15 +36,6 @@ fn preload_utils_module(lua: &Lua, module: &LuaTable) -> LuaResult<()> {
   Ok(())
 }
 
-#[deprecated]
-pub fn call_func<R: FromLuaMulti>(
-  lua: &Lua,
-  key: impl IntoLua,
-  args: impl IntoLuaMulti,
-) -> LuaResult<R> {
-  lua.globals().get::<LuaFunction>(key)?.call(args)
-}
-
 fn add_enum<E>(lua: &Lua) -> LuaResult<()>
 where
   E: IntoEnumIterator + Into<&'static str> + Serialize + 'static,

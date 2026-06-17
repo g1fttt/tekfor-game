@@ -99,7 +99,7 @@ impl Editor {
 
       ui.separator();
 
-      let is_in_bounds = self.world_grid.get_cell(self.cursor_pos.x, self.cursor_pos.y).is_some();
+      let is_in_bounds = self.world_grid.get_cell(self.cursor_pos).is_some();
 
       if is_in_bounds {
         self.draw_current_entity_ui(ui);
@@ -150,7 +150,7 @@ impl Editor {
   }
 
   fn last_entity_under_cursor(&self) -> Option<Entity> {
-    let cell_entities = self.world_grid.get_cell(self.cursor_pos.x, self.cursor_pos.y)?;
+    let cell_entities = self.world_grid.get_cell(self.cursor_pos)?;
     cell_entities.last().copied()
   }
 
@@ -172,7 +172,7 @@ impl Editor {
   }
 
   fn draw_current_entity_ui(&mut self, ui: &mut egui::Ui) {
-    let Some(cell_entities) = self.world_grid.get_cell(self.cursor_pos.x, self.cursor_pos.y) else {
+    let Some(cell_entities) = self.world_grid.get_cell(self.cursor_pos) else {
       return;
     };
 

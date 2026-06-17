@@ -28,7 +28,7 @@ impl LuaUserData for WorldGrid {
     methods.add_method("has_obstacle_at", |lua, this, pos: LuaValue| {
       let pos = lua.from_value::<Position>(pos)?;
 
-      Ok(this.has_component_at::<&Obstacle>(pos.x, pos.y))
+      Ok(this.has_component_at::<&Obstacle>(pos.into_inner()))
     });
 
     methods.add_method("is_player", |lua, this, entity: LuaValue| {
@@ -79,10 +79,11 @@ impl LuaUserData for WorldGrid {
 
     methods.add_method_mut("add_action", |lua, this, (entity, action): (LuaValue, LuaValue)| {
       let entity = lua.from_value::<Entity>(entity)?;
+      let action_kind = lua.from_value::<ActionKind>(action)?;
 
-      if let Ok(queue) = this.query_one_mut::<&mut ActionQueue>(entity) {
-        let action_kind = lua.from_value::<ActionKind>(action)?;
-
+      if this.satisfies::<&Player>(entity) {
+        this.push_player_action(action_kind);
+      } else if let Ok(queue) = this.query_one_mut::<&mut ActionQueue>(entity) {
         queue.push_back(action_kind);
       }
       Ok(())
@@ -92,7 +93,7 @@ impl LuaUserData for WorldGrid {
       let pos = lua.from_value::<Position>(pos)?;
 
       let entities: Option<Vec<Entity>> =
-        this.get_cell(pos.x, pos.y).map(|it| it.cloned().collect());
+        this.get_cell(pos.into_inner()).map(|it| it.cloned().collect());
 
       lua.to_value(&entities)
     });

@@ -1,11 +1,12 @@
 use crate::components::*;
-use crate::core::{Direction, Game, WorldGrid};
+use crate::core::{Game, WorldGrid};
 use crate::lock_picking::LockKind;
 use crate::resources::*;
 use crate::serialize::WorldInfo;
 use crate::states::PlannedGameState;
 use crate::systems::draw::*;
 use crate::systems::lua::*;
+use crate::systems::tick::*;
 use crate::utils;
 
 use egui_macroquad::egui;
@@ -26,8 +27,6 @@ pub struct Gameplay {
   pub game_events: GameEventManager,
   lua_ctx: LuaContext,
   asset_manager: AssetManager,
-  script_path: Option<String>,
-  player_entities: Vec<Entity>,
   tick_state: TickState,
   is_level_finished: bool,
   should_return_to_menu: bool,
@@ -36,21 +35,11 @@ pub struct Gameplay {
 
 impl Gameplay {
   pub fn new(lua: Lua, asset_manager: AssetManager, info: WorldInfo, world: World) -> Self {
-    let mut world_grid = WorldGrid::new(&info, world);
-
-    let player_entities = world_grid
-      .query_mut::<(&Player, Entity)>()
-      .into_iter()
-      .map(|(_player, entity)| entity)
-      .collect();
-
     Self {
-      world_grid,
+      world_grid: WorldGrid::new(&info, world),
       game_events: GameEventManager::new(),
       lua_ctx: LuaContext::new(lua),
       asset_manager,
-      script_path: None,
-      player_entities,
       tick_state: TickState::ProcessingLogic,
       is_level_finished: false,
       should_return_to_menu: false,
@@ -77,16 +66,6 @@ impl Gameplay {
       if ui.button("Return to main menu").clicked() {
         self.should_return_to_menu = true;
       }
-
-      ui.separator();
-
-      let selected_text = format!("{:?}", self.script_path);
-
-      egui::ComboBox::from_label("Script").selected_text(selected_text).show_ui(ui, |ui| {
-        utils::with_entries_in("scripts/", |path, filename| {
-          ui.selectable_value(&mut self.script_path, Some(path), filename);
-        })
-      });
     });
   }
 
@@ -121,7 +100,7 @@ impl Gameplay {
         self.tick_state = TickState::WaitingForAction;
       }
       TickState::WaitingForAction => {
-        if self.update_input() && self.process_actions() {
+        if update_input(&mut self.world_grid) && self.process_actions() {
           self.tick_state = TickState::Animating;
         }
       }
@@ -136,16 +115,6 @@ impl Gameplay {
     Ok(())
   }
 
-  pub fn push_player_action(&mut self, action_kind: ActionKind) {
-    for mut queue in self
-      .player_entities
-      .iter()
-      .filter_map(|&entity| self.world_grid.get::<&mut ActionQueue>(entity).ok())
-    {
-      queue.push_back(action_kind.clone());
-    }
-  }
-
   fn update_lua(&mut self) -> LuaResult<()> {
     update_entities_lua(&self.world_grid, &mut self.lua_ctx, &self.asset_manager)?;
     call_entity_lua_update(&mut self.world_grid, &mut self.game_events, &self.lua_ctx)
@@ -156,53 +125,9 @@ impl Gameplay {
       log::error!("Error occured during `update_lua` call: {}", err);
     };
 
-    self.mark_dead();
+    mark_dead(&self.world_grid, &mut self.game_events);
+
     self.process_events();
-  }
-
-  fn mark_dead(&mut self) {
-    for (_, &pos, attacker) in
-      self.world_grid.query::<(&CausesDeath, &Position, Entity)>().into_iter()
-    {
-      let Some(cell_entities) = self.world_grid.get_cell(pos.x, pos.y) else {
-        continue;
-      };
-
-      for &target in cell_entities {
-        if !self.world_grid.satisfies::<&Mortal>(target) {
-          continue;
-        }
-
-        self.game_events.add(GameEvent::EntityDeath { target, attacker })
-      }
-    }
-  }
-
-  fn update_input(&mut self) -> bool {
-    let Some(key_pressed) = get_last_key_pressed() else {
-      return false;
-    };
-
-    if is_any_animation_active(&self.world_grid) {
-      return false;
-    }
-
-    let move_dir = match key_pressed {
-      KeyCode::W => Some(Direction::North),
-      KeyCode::A => Some(Direction::West),
-      KeyCode::S => Some(Direction::South),
-      KeyCode::D => Some(Direction::East),
-      _ => None,
-    };
-
-    if let Some(dir) = move_dir {
-      self.push_player_action(ActionKind::Move(MoveOptions {
-        dir,
-        can_push: true,
-        despawn_if_collided: false,
-      }));
-    }
-    true
   }
 
   fn update_effects(&mut self) {
@@ -308,13 +233,12 @@ impl Gameplay {
     let new_pos = utils::advance_pos_in_direction(pos, opts.dir);
 
     let Some(cell_entities): Option<Vec<Entity>> =
-      self.world_grid.get_cell(new_pos.x, new_pos.y).map(|it| it.cloned().collect())
+      self.world_grid.get_cell(new_pos).map(|it| it.cloned().collect())
     else {
       return;
     };
 
     for cell_entity in cell_entities {
-      // FIXME:
       if self.world_grid.satisfies::<&Intelligent>(entity) {
         self.game_events.add(GameEvent::EntityInteracted(cell_entity))
       }
@@ -324,7 +248,7 @@ impl Gameplay {
       }
     }
 
-    let entity_move_success = self.move_entity_to_pos(entity, new_pos.x, new_pos.y);
+    let entity_move_success = self.move_entity_to_pos(entity, new_pos);
 
     if entity_move_success {
       let start = Position(pos);
@@ -338,8 +262,8 @@ impl Gameplay {
     }
   }
 
-  fn move_entity_to_pos(&mut self, entity: Entity, x: u32, y: u32) -> bool {
-    if self.world_grid.has_component_at::<&Obstacle>(x, y) {
+  fn move_entity_to_pos(&mut self, entity: Entity, desired_pos: UVec2) -> bool {
+    if self.world_grid.has_component_at::<&Obstacle>(desired_pos) {
       return false;
     }
 
@@ -351,12 +275,11 @@ impl Gameplay {
       return false;
     };
 
-    self.world_grid.remove_from_cell(entity, pos.x, pos.y);
-    self.world_grid.add_to_cell(entity, x, y);
+    self.world_grid.remove_from_cell(entity, pos);
+    self.world_grid.add_to_cell(entity, desired_pos);
 
     if let Ok(mut pos) = self.world_grid.get::<&mut Position>(entity) {
-      pos.x = x;
-      pos.y = y;
+      *pos = Position(desired_pos);
     }
     true
   }
