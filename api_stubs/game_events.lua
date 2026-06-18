@@ -6,6 +6,7 @@ GameEventType = {
   DoorUnlock = "DoorUnlock",
   DoorOpen = "DoorOpen",
   EntityWentDownstairs = "EntityWentDowntairs",
+  EntityDespawn = "EntityDespawn",
   EntityDeath = "EntityDeath",
 }
 

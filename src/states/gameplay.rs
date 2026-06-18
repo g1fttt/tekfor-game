@@ -173,18 +173,16 @@ impl Gameplay {
           Some(SoundID::Unlock)
         }
         GameEvent::DoorOpen(entity) => {
-          let _ = self.world_grid.despawn_entity(entity);
+          self.game_events.add(GameEvent::EntityDespawn(entity));
 
           Some(SoundID::DoorOpen)
         }
         GameEvent::EntityWentDowntairs(entity) => {
-          let entity_sprite_name = utils::entity_sprite_text_default(&self.world_grid, entity);
-
-          log::info!("{} went downstairs", entity_sprite_name);
-
-          let _ = self.world_grid.despawn_entity(entity);
-
+          self.game_events.add(GameEvent::EntityDespawn(entity));
           self.is_level_finished = true;
+
+          let entity_sprite_name = utils::entity_sprite_text_default(&self.world_grid, entity);
+          log::info!("{} went downstairs", entity_sprite_name);
 
           Some(SoundID::LevelFinished)
         }
@@ -202,16 +200,24 @@ impl Gameplay {
           None
         }
         GameEvent::EntityDeath { target, attacker } => {
+          self.game_events.add(GameEvent::EntityDespawn(target));
+
+          if self.world_grid.satisfies::<&Player>(target) {
+            self.hit_intensity = 1.0;
+          }
+
           let target_sprite_name = utils::entity_sprite_text_default(&self.world_grid, target);
           let attacker_sprite_name = utils::entity_sprite_text_default(&self.world_grid, attacker);
 
           log::info!("{} was killed by {}", target_sprite_name, attacker_sprite_name);
 
-          let _ = self.world_grid.despawn_entity(target);
-
-          self.hit_intensity = 1.0;
-
           Some(SoundID::Death)
+        }
+        GameEvent::EntityDespawn(entity) => {
+          self.lua_ctx.entities_api.remove(&entity);
+          self.world_grid.despawn_entity(entity).unwrap();
+
+          None
         }
       };
 
@@ -260,7 +266,7 @@ impl Gameplay {
 
       let _ = self.world_grid.insert_one(entity, Animation::new(move_animation));
     } else if !entity_move_success && opts.despawn_if_collided {
-      let _ = self.world_grid.despawn_entity(entity);
+      self.game_events.add(GameEvent::EntityDespawn(entity));
     }
   }
 
@@ -353,6 +359,7 @@ pub enum GameEvent {
   DoorOpen(Entity),
   EntityWentDowntairs(Entity),
   EntityInteracted(Entity),
+  EntityDespawn(Entity),
   EntityDeath { target: Entity, attacker: Entity },
 }
 
