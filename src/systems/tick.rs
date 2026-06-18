@@ -8,7 +8,7 @@ use macroquad::input::{KeyCode, get_last_key_pressed};
 
 pub fn mark_dead(world_grid: &WorldGrid, game_events: &mut GameEventManager) {
   for (_, pos, attacker) in world_grid.query::<(&CausesDeath, &Position, Entity)>().into_iter() {
-    let Some(cell_entities) = world_grid.get_cell(pos.into_inner()) else {
+    let Ok(cell_entities) = world_grid.get_cell(pos.into_inner()) else {
       continue;
     };
 

@@ -3,7 +3,7 @@ use crate::resources::AssetManager;
 use crate::scripting;
 use crate::serialize::WorldInfo;
 
-use hecs::{DynamicBundle, Entity, NoSuchEntity, World};
+use hecs::{DynamicBundle, Entity, NoSuchEntity, Query, World};
 use mlua::prelude::*;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
@@ -108,7 +108,7 @@ impl Grid {
     let mut this = Self { cells, width, height };
 
     for (pos, entity) in world.query_mut::<(&Position, Entity)>() {
-      this.add_to_cell(entity, pos.into_inner());
+      this.add_to_cell(entity, pos.into_inner()).unwrap();
     }
     this
   }
@@ -150,27 +150,31 @@ impl Grid {
     self.height
   }
 
-  fn get_cell(&self, pos: UVec2) -> Option<Iter<'_, Entity>> {
+  fn get_cell(&self, pos: UVec2) -> Result<Iter<'_, Entity>, WorldGridError> {
     self.index(pos).map(|idx| self.cells[idx].iter())
   }
 
-  fn add_to_cell(&mut self, entity: Entity, pos: UVec2) {
-    if let Some(idx) = self.index(pos) {
-      self.cells[idx].insert(entity);
-    }
+  fn add_to_cell(&mut self, entity: Entity, pos: UVec2) -> Result<(), WorldGridError> {
+    let idx = self.index(pos)?;
+
+    self.cells[idx].insert(entity);
+
+    Ok(())
   }
 
-  fn remove_from_cell(&mut self, entity: Entity, pos: UVec2) {
-    if let Some(idx) = self.index(pos) {
-      self.cells[idx].retain(|&e| e != entity);
-    }
+  fn remove_from_cell(&mut self, entity: Entity, pos: UVec2) -> Result<(), WorldGridError> {
+    let idx = self.index(pos)?;
+
+    self.cells[idx].remove(&entity);
+
+    Ok(())
   }
 
-  fn index(&self, pos: UVec2) -> Option<usize> {
+  fn index(&self, pos: UVec2) -> Result<usize, WorldGridError> {
     if pos.x >= self.width || pos.y >= self.height {
-      return None;
+      return Err(WorldGridError::InvalidPosition);
     }
-    Some((pos.y * self.width + pos.x) as usize)
+    Ok((pos.y * self.width + pos.x) as usize)
   }
 }
 
@@ -198,55 +202,66 @@ impl WorldGrid {
     self.grid.resize(new_width, new_height);
   }
 
-  pub fn get_cell(&self, pos: UVec2) -> Option<Iter<'_, Entity>> {
+  pub fn get_cell(&self, pos: UVec2) -> Result<Iter<'_, Entity>, WorldGridError> {
     self.grid.get_cell(pos)
   }
 
-  pub fn add_to_cell(&mut self, entity: Entity, pos: UVec2) {
-    self.grid.add_to_cell(entity, pos);
+  pub fn add_to_cell(&mut self, entity: Entity, pos: UVec2) -> Result<(), WorldGridError> {
+    self.grid.add_to_cell(entity, pos)
   }
 
-  pub fn remove_from_cell(&mut self, entity: Entity, pos: UVec2) {
-    self.grid.remove_from_cell(entity, pos);
+  pub fn remove_from_cell(&mut self, entity: Entity, pos: UVec2) -> Result<(), WorldGridError> {
+    self.grid.remove_from_cell(entity, pos)
   }
 
-  pub fn spawn_entity(&mut self, components: impl DynamicBundle) -> Entity {
+  pub fn spawn_entity(&mut self, components: impl DynamicBundle) -> Result<Entity, WorldGridError> {
     let entity = self.world.spawn(components);
 
     if let Ok((pos, _)) = self.world.query_one_mut::<(&Position, &OnGrid)>(entity) {
-      self.grid.add_to_cell(entity, pos.into_inner());
+      self.grid.add_to_cell(entity, pos.into_inner())?;
     }
-    entity
+    Ok(entity)
   }
 
-  pub fn despawn_entity(&mut self, entity: Entity) -> Result<(), NoSuchEntity> {
+  /// Работает так же как и обыкновенный `.spawn_entity` с последующим вызовом `.unwrap()`.
+  pub fn spawn_entity_panic(&mut self, components: impl DynamicBundle) -> Entity {
+    self.spawn_entity(components).unwrap()
+  }
+
+  pub fn despawn_entity(&mut self, entity: Entity) -> Result<(), WorldGridError> {
     if let Ok(pos) = self.world.get::<&Position>(entity) {
-      self.grid.remove_from_cell(entity, pos.into_inner());
+      self.grid.remove_from_cell(entity, pos.into_inner())?;
     };
 
-    for linked_entities in self
-      .world
-      .query_mut::<&mut LinkedEntities>()
-      .into_iter()
-      .filter_map(|linked_entities| linked_entities.get_mut())
-    {
-      linked_entities.retain(|&current_entity| current_entity != entity);
-    }
-
-    self.world.despawn(entity)
+    self.unlink_entity(entity);
+    self.world.despawn(entity).map_err(WorldGridError::from)
   }
 
-  pub fn has_component_at<Q: hecs::Query>(&self, pos: UVec2) -> bool {
-    let Some(mut cell_entities) = self.grid.get_cell(pos) else {
+  /// Возвращает **true** если: хотя-бы одна сущность с позицией `pos` соответствует `Q: Query`.
+  ///
+  /// Возвращает **false** если: нет сущностей удовлетворяющих `Q: Query` с позицией `pos`,
+  /// или же если `pos` недействительный и выходит, например, за границы сетки.
+  pub fn has_component_at<Q: Query>(&self, pos: UVec2) -> bool {
+    let Ok(mut cell_entities) = self.grid.get_cell(pos) else {
       return false;
     };
-
     cell_entities.any(|&ent| self.world.satisfies::<Q>(ent))
   }
 
   pub fn push_player_action(&mut self, action_kind: ActionKind) {
     for (_, queue) in self.query_mut::<(&Player, &mut ActionQueue)>() {
       queue.push_back(action_kind.clone());
+    }
+  }
+
+  fn unlink_entity(&mut self, entity: Entity) {
+    for linked_entities in self
+      .world
+      .query_mut::<&mut LinkedEntities>()
+      .into_iter()
+      .filter_map(|linked_entities| linked_entities.get_mut())
+    {
+      linked_entities.remove(&entity);
     }
   }
 }
@@ -268,5 +283,18 @@ impl Deref for WorldGrid {
 
   fn deref(&self) -> &Self::Target {
     &self.world
+  }
+}
+
+#[derive(Debug)]
+pub enum WorldGridError {
+  InvalidPosition,
+  NoSuchEntity,
+  MissingComponent,
+}
+
+impl From<NoSuchEntity> for WorldGridError {
+  fn from(_: NoSuchEntity) -> Self {
+    Self::NoSuchEntity
   }
 }

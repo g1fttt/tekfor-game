@@ -86,7 +86,7 @@ mod tests {
     let (lua, world_grid, _, lua_game_events) = with_world_grid(CODE)?;
     let game_events = lua.from_value::<Vec<GameEvent>>(lua_game_events)?;
 
-    let door = *world_grid.get_cell(uvec2(1, 2)).and_then(|mut it| it.next()).unwrap();
+    let door = *world_grid.get_cell(uvec2(1, 2)).ok().and_then(|mut it| it.next()).unwrap();
 
     assert_eq!(
       game_events,

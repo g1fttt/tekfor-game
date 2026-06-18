@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use strum::{EnumDiscriminants, EnumIter, IntoStaticStr};
 
 use std::collections::{HashSet, VecDeque};
-use std::sync::Arc;
+use std::rc::Rc;
 
 macro_rules! deref_component {
   ($from:ty, $into:ty) => {
@@ -127,22 +127,27 @@ pub struct Bouncing {
   pub to: Direction,
 }
 
+// NOTE: Стоит использовать Arc если планируется многопоточность.
+//
+/// # Safety
+/// Тип не является потокобезопасным, ведь использует `Rc` во внутренней реализации,
+/// но при этом этот тип реализует такие типажи как: `Sync` и `Send`,
+/// чтобы компилятор думал будто это потокобезопасный тип.
 #[derive(Serialize, Deserialize)]
-pub struct LinkedEntities(Arc<HashSet<Entity>>);
+pub struct LinkedEntities(Rc<HashSet<Entity>>);
 
 impl LinkedEntities {
   pub fn new(entities: HashSet<Entity>) -> Self {
-    Self(Arc::new(entities))
+    Self(Rc::new(entities))
   }
 
   pub fn get_mut(&mut self) -> Option<&mut HashSet<Entity>> {
-    Arc::get_mut(&mut self.0)
-  }
-
-  pub fn strong_clone(&self) -> Arc<HashSet<Entity>> {
-    Arc::clone(&self.0)
+    Rc::get_mut(&mut self.0)
   }
 }
+
+unsafe impl Sync for LinkedEntities {}
+unsafe impl Send for LinkedEntities {}
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Facing(pub Direction);

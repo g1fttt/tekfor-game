@@ -1,5 +1,5 @@
 use crate::components::*;
-use crate::core::{CELL_SIZE, Direction, Game, WorldGrid};
+use crate::core::{CELL_SIZE, Direction, Game, WorldGrid, WorldGridError};
 use crate::lock_picking::LockKind;
 use crate::resources::{AssetManager, SpriteID};
 use crate::serialize::{self, WorldInfo};
@@ -99,7 +99,7 @@ impl Editor {
 
       ui.separator();
 
-      let is_in_bounds = self.world_grid.get_cell(self.cursor_pos).is_some();
+      let is_in_bounds = self.world_grid.get_cell(self.cursor_pos).is_ok();
 
       if is_in_bounds {
         self.draw_current_entity_ui(ui);
@@ -146,19 +146,25 @@ impl Editor {
     };
 
     self.cursor_pos = crate::utils::advance_pos_in_direction(self.cursor_pos, dir);
-    self.selected_entity = self.last_entity_under_cursor();
+
+    self.try_update_selected_entity();
   }
 
-  fn last_entity_under_cursor(&self) -> Option<Entity> {
-    let cell_entities = self.world_grid.get_cell(self.cursor_pos)?;
-    cell_entities.last().copied()
+  fn last_entity_under_cursor(&self) -> Result<Option<Entity>, WorldGridError> {
+    self.world_grid.get_cell(self.cursor_pos).map(|it| it.last().copied())
   }
 
   fn try_despawn_selected_entity(&mut self) {
     if let Some(entity) = self.selected_entity {
       let _ = self.world_grid.despawn_entity(entity);
 
-      self.selected_entity = self.last_entity_under_cursor();
+      self.try_update_selected_entity();
+    }
+  }
+
+  fn try_update_selected_entity(&mut self) {
+    if let Ok(maybe_entity) = self.last_entity_under_cursor() {
+      self.selected_entity = maybe_entity;
     }
   }
 
@@ -172,7 +178,7 @@ impl Editor {
   }
 
   fn draw_current_entity_ui(&mut self, ui: &mut egui::Ui) {
-    let Some(cell_entities) = self.world_grid.get_cell(self.cursor_pos) else {
+    let Ok(cell_entities) = self.world_grid.get_cell(self.cursor_pos) else {
       return;
     };
 
@@ -252,7 +258,7 @@ impl Editor {
   }
 
   #[rustfmt::skip]
-  fn draw_sprite_param_ui(&mut self, ui: &mut egui::Ui) {
+  fn draw_sprite_param_ui(&mut self, ui: &mut egui::Ui)  {
     let Some(sprite_id) = self.entity_info.sprite_id else {
       return;
     };
@@ -274,19 +280,19 @@ impl Editor {
       | SpriteID::WallHorizontalLowerSplit
       | SpriteID::WallVerticalTopEdge
       | SpriteID::WallVerticalBottomEdge) => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_entity(wall_template(this.cursor_pos, wall_sprite_id)))
+        Some(this.world_grid.spawn_entity_panic(wall_template(this.cursor_pos, wall_sprite_id)))
       }),
       SpriteID::Crate => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_entity(crate_template(this.cursor_pos)))
+        Some(this.world_grid.spawn_entity_panic(crate_template(this.cursor_pos)))
       }),
       SpriteID::Player => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_entity(player_template(this.cursor_pos)))
+        Some(this.world_grid.spawn_entity_panic(player_template(this.cursor_pos)))
       }),
       SpriteID::DoorUnlocked => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_entity(door_template(this.cursor_pos, false)))
+        Some(this.world_grid.spawn_entity_panic(door_template(this.cursor_pos, false)))
       }),
       downstairs_sprite_id @ SpriteID::DownstairsHorizontalUpper => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_entity(downstairs_template(this.cursor_pos, downstairs_sprite_id)))
+        Some(this.world_grid.spawn_entity_panic(downstairs_template(this.cursor_pos, downstairs_sprite_id)))
       }),
       SpriteID::DoorLocked => self.draw_door_locked_ui(ui),
       SpriteID::PressurePlate => self.draw_pressure_plate_ui(ui),
@@ -312,7 +318,7 @@ impl Editor {
     });
 
     let door_locked_entity = self.draw_plain_sprite_ui(ui, |this| {
-      Some(this.world_grid.spawn_entity(door_template(this.cursor_pos, true)))
+      Some(this.world_grid.spawn_entity_panic(door_template(this.cursor_pos, true)))
     });
 
     if let Some(entity) = door_locked_entity
@@ -329,7 +335,7 @@ impl Editor {
     self.draw_plain_sprite_ui(ui, |this| {
       let fireball_entity = this
         .world_grid
-        .spawn_entity(fireball_template(this.cursor_pos, this.entity_info.direction_to?));
+        .spawn_entity_panic(fireball_template(this.cursor_pos, this.entity_info.direction_to?));
       Some(fireball_entity)
     })
   }
@@ -338,9 +344,10 @@ impl Editor {
     draw_direction_ui("Facing", &mut self.entity_info.direction_to, ui);
 
     self.draw_plain_sprite_ui(ui, |this| {
-      let firebal_thrower_entity = this
-        .world_grid
-        .spawn_entity(fireball_thrower_template(this.cursor_pos, this.entity_info.direction_to?));
+      let firebal_thrower_entity = this.world_grid.spawn_entity_panic(fireball_thrower_template(
+        this.cursor_pos,
+        this.entity_info.direction_to?,
+      ));
       Some(firebal_thrower_entity)
     })
   }
@@ -352,7 +359,7 @@ impl Editor {
 
     self.draw_plain_sprite_ui(ui, |this| {
       let pressure_plate_entity =
-        this.world_grid.spawn_entity(pressure_plate_template(this.cursor_pos));
+        this.world_grid.spawn_entity_panic(pressure_plate_template(this.cursor_pos));
 
       let linked_entities = &this.entity_info.linked_entities;
 
@@ -374,7 +381,7 @@ impl Editor {
     self.draw_plain_sprite_ui(ui, |this| {
       let (from, to) = this.entity_info.direction_from.zip(this.entity_info.direction_to)?;
 
-      Some(this.world_grid.spawn_entity(saw_template(this.cursor_pos, from, to)))
+      Some(this.world_grid.spawn_entity_panic(saw_template(this.cursor_pos, from, to)))
     })
   }
 

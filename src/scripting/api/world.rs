@@ -51,7 +51,7 @@ impl LuaUserData for WorldGrid {
 
         let entity = this.spawn_entity(fireball_template(pos.into_inner(), facing_dir));
 
-        lua.to_value(&entity)
+        lua.to_value(&entity.ok())
       },
     );
 
@@ -60,7 +60,7 @@ impl LuaUserData for WorldGrid {
 
       let entity = this.spawn_entity(door_template(pos.into_inner(), false));
 
-      lua.to_value(&entity)
+      lua.to_value(&entity.ok())
     });
 
     methods.add_method_mut("switch_bouncing_dir", |lua, this, entity: LuaValue| {
@@ -92,10 +92,10 @@ impl LuaUserData for WorldGrid {
     methods.add_method("get_cell", |lua, this, pos: LuaValue| {
       let pos = lua.from_value::<Position>(pos)?;
 
-      let entities: Option<Vec<Entity>> =
-        this.get_cell(pos.into_inner()).map(|it| it.cloned().collect());
-
-      lua.to_value(&entities)
+      match this.get_cell(pos.into_inner()) {
+        Ok(it) => lua.to_value(&it.cloned().collect::<Vec<Entity>>()),
+        Err(_) => Ok(LuaNil),
+      }
     });
 
     methods.add_method("get_lock_kind", |lua, this, entity: LuaValue| {

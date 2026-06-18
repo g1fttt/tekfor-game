@@ -1,5 +1,5 @@
 use crate::components::*;
-use crate::core::{Game, WorldGrid};
+use crate::core::{Game, WorldGrid, WorldGridError};
 use crate::lock_picking::LockKind;
 use crate::resources::*;
 use crate::serialize::WorldInfo;
@@ -232,8 +232,8 @@ impl Gameplay {
 
     let new_pos = utils::advance_pos_in_direction(pos, opts.dir);
 
-    let Some(cell_entities): Option<Vec<Entity>> =
-      self.world_grid.get_cell(new_pos).map(|it| it.cloned().collect())
+    let Ok(cell_entities) =
+      self.world_grid.get_cell(new_pos).map(|it| it.cloned().collect::<Vec<Entity>>())
     else {
       return;
     };
@@ -248,7 +248,9 @@ impl Gameplay {
       }
     }
 
-    let entity_move_success = self.move_entity_to_pos(entity, new_pos);
+    let Ok(entity_move_success) = self.move_entity_to_pos(entity, new_pos) else {
+      return;
+    };
 
     if entity_move_success {
       let start = Position(pos);
@@ -262,9 +264,13 @@ impl Gameplay {
     }
   }
 
-  fn move_entity_to_pos(&mut self, entity: Entity, desired_pos: UVec2) -> bool {
+  fn move_entity_to_pos(
+    &mut self,
+    entity: Entity,
+    desired_pos: UVec2,
+  ) -> Result<bool, WorldGridError> {
     if self.world_grid.has_component_at::<&Obstacle>(desired_pos) {
-      return false;
+      return Ok(false);
     }
 
     let Ok(pos) = self
@@ -272,16 +278,16 @@ impl Gameplay {
       .query_one_mut::<(&Position, &Movable, &OnGrid)>(entity)
       .map(|(pos, _, _)| pos.into_inner())
     else {
-      return false;
+      return Ok(false);
     };
 
-    self.world_grid.remove_from_cell(entity, pos);
-    self.world_grid.add_to_cell(entity, desired_pos);
+    self.world_grid.remove_from_cell(entity, pos)?;
+    self.world_grid.add_to_cell(entity, desired_pos)?;
 
     if let Ok(mut pos) = self.world_grid.get::<&mut Position>(entity) {
       *pos = Position(desired_pos);
     }
-    true
+    Ok(true)
   }
 }
 
