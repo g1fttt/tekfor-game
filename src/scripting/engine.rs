@@ -31,9 +31,7 @@ fn preload_utils_module(lua: &Lua, module: &LuaTable) -> LuaResult<()> {
     lua.to_value(&Position(new_pos))
   })?;
 
-  module.set("advance_pos_in_direction", advance_pos_in_direction)?;
-
-  Ok(())
+  module.set("advance_pos_in_direction", advance_pos_in_direction)
 }
 
 fn add_enum<E>(lua: &Lua) -> LuaResult<()>
@@ -65,7 +63,9 @@ fn preload_module(
   let loader = lua.create_function(move |lua, _: ()| {
     let module = lua.create_table()?;
 
-    loader(lua, &module)
+    loader(lua, &module)?;
+
+    Ok(module)
   })?;
 
   preload.set(key, loader)
