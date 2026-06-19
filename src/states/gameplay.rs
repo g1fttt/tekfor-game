@@ -1,5 +1,5 @@
 use crate::components::*;
-use crate::core::{Game, WorldGrid, WorldGridError};
+use crate::core::{DrawDestination, Game, WorldGrid, WorldGridError};
 use crate::lock_picking::LockKind;
 use crate::resources::*;
 use crate::serialize::WorldInfo;
@@ -70,14 +70,12 @@ impl Gameplay {
   }
 
   pub fn draw(&self, state: &Game) {
-    let screen_texture = render_target(screen_width() as u32, screen_height() as u32);
-
-    let render_target = state.with_camera(Some(screen_texture), || {
+    let screen_texture = state.with_camera(DrawDestination::OntoRenderTarget, || {
       draw_sprites(&self.world_grid, &self.asset_manager);
     });
 
-    if let Some(rt) = render_target {
-      draw_crt_effect(&self.asset_manager, &rt, self.hit_intensity);
+    if let Some(tex) = screen_texture {
+      draw_crt_effect(&self.asset_manager, &tex, self.hit_intensity);
     }
   }
 

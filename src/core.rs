@@ -4,6 +4,7 @@ use crate::scripting;
 use crate::serialize::WorldInfo;
 
 use hecs::{DynamicBundle, Entity, NoSuchEntity, Query, World};
+use macroquad::miniquad::window::screen_size;
 use mlua::prelude::*;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
@@ -24,6 +25,7 @@ pub struct Game {
   pub asset_manager: AssetManager,
   #[expect(dead_code, reason = "Отсутствие публичных методов")]
   audio_context: AudioContext,
+  render_target: RenderTarget,
   camera: Camera,
 }
 
@@ -35,30 +37,30 @@ impl Game {
       asset_manager: AssetManager::load_all(&lua).await?,
       lua,
       audio_context: AudioContext::new(),
+      render_target: render_target(screen_width() as u32, screen_height() as u32),
       camera: Camera::new(Vec2::ZERO, 0.005),
     })
   }
 
-  pub fn with_camera(
-    &self,
-    render_target: Option<RenderTarget>,
-    f: impl Fn(),
-  ) -> Option<Texture2D> {
+  pub fn with_camera(&self, dest: DrawDestination, f: impl Fn()) -> Option<Texture2D> {
     let mut camera: Camera2D = (&self.camera).into();
 
-    if render_target.is_none() {
-      camera.zoom.y *= -1.0;
+    match dest {
+      DrawDestination::OntoRenderTarget => camera.render_target = Some(self.render_target.clone()),
+      DrawDestination::OntoScreen => camera.zoom.y *= -1.0,
     }
-
-    camera.render_target = render_target;
 
     set_camera(&camera);
-    {
-      f();
-    }
+    clear_background(BLACK);
+
+    f();
+
     set_default_camera();
 
-    camera.render_target.take().map(|rt| rt.texture)
+    match dest {
+      DrawDestination::OntoRenderTarget => camera.render_target.map(|rt| rt.texture),
+      DrawDestination::OntoScreen => None,
+    }
   }
 
   pub fn update_camera(&mut self) {
@@ -79,6 +81,15 @@ impl Game {
     }
 
     self.camera.update(mouse_position_local(), is_mouse_button_down(MouseButton::Left));
+  }
+
+  pub fn handle_screen_resize(&mut self) {
+    let rt_tex = &self.render_target.texture;
+    let (width, height) = screen_size();
+
+    if rt_tex.width() != width || rt_tex.height() != height {
+      self.render_target = render_target(width as u32, height as u32);
+    }
   }
 }
 
@@ -284,6 +295,12 @@ impl Deref for WorldGrid {
   fn deref(&self) -> &Self::Target {
     &self.world
   }
+}
+
+#[derive(PartialEq)]
+pub enum DrawDestination {
+  OntoRenderTarget,
+  OntoScreen,
 }
 
 #[derive(Debug)]

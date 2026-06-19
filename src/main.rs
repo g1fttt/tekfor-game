@@ -13,6 +13,7 @@ use egui_macroquad::egui;
 use resources::Settings;
 use states::{GameState, PlannedGameState};
 
+use states::editor::Editor;
 use states::gameplay::Gameplay;
 use states::menu::Menu;
 
@@ -20,8 +21,6 @@ use macroquad::miniquad::conf::{AppleGfxApi, Platform};
 use macroquad::miniquad::date::now;
 use macroquad::prelude::*;
 use macroquad::rand::srand;
-
-use crate::states::editor::Editor;
 
 // Набор звуков:         https://ci.itch.io/400-sounds-pack
 //                       https://nihil-existentia.itch.io/free-audio-asset-collection
@@ -40,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
   let mut state = Game::new().await?;
 
   loop {
-    clear_background(BLACK);
+    state.handle_screen_resize();
 
     let mut ui_wants_pointer_input = false;
     let mut ui_wants_keyboard_input = false;
@@ -94,6 +93,8 @@ fn update_and_draw(
   state: &mut Game,
   ui_wants_input: bool,
 ) -> mlua::Result<()> {
+  clear_background(DARKGRAY);
+
   let planned_state = match current_state {
     GameState::Menu(menu) => menu.planned(),
     GameState::Editor(editor) => {

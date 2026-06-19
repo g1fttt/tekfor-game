@@ -1,5 +1,5 @@
 use crate::components::*;
-use crate::core::{CELL_SIZE, Direction, Game, WorldGrid, WorldGridError};
+use crate::core::{CELL_SIZE, Direction, DrawDestination, Game, WorldGrid, WorldGridError};
 use crate::lock_picking::LockKind;
 use crate::resources::{AssetManager, SpriteID};
 use crate::serialize::{self, WorldInfo};
@@ -46,7 +46,7 @@ impl Editor {
   }
 
   pub fn draw(&self, state: &Game) {
-    state.with_camera(None, || {
+    state.with_camera(DrawDestination::OntoScreen, || {
       draw_sprites(&self.world_grid, &self.asset_manager);
 
       self.draw_cursor();
