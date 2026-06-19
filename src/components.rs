@@ -2,7 +2,7 @@ use crate::core::Direction;
 use crate::lock_picking::LockKind;
 use crate::resources::{ScriptID, Settings, SpriteID};
 
-use hecs::Entity;
+use hecs::{DynamicBundle, Entity};
 use macroquad::math::{UVec2, Vec2};
 use serde::{Deserialize, Serialize};
 use strum::{EnumDiscriminants, EnumIter, IntoStaticStr};
@@ -193,11 +193,11 @@ deref_component!(ActionQueue, VecDeque<ActionKind>);
 deref_component!(Facing, Direction);
 deref_component!(Locked, LockKind);
 
-pub fn downstairs_template(pos: UVec2, sprite_id: SpriteID) -> impl hecs::DynamicBundle {
+pub fn downstairs_template(pos: UVec2, sprite_id: SpriteID) -> impl DynamicBundle {
   (Sprite(sprite_id), Downstairs, OnGrid, Position(pos), Script(ScriptID::Downstairs))
 }
 
-pub fn saw_template(pos: UVec2, from: Direction, to: Direction) -> impl hecs::DynamicBundle {
+pub fn saw_template(pos: UVec2, from: Direction, to: Direction) -> impl DynamicBundle {
   (
     Sprite(SpriteID::Saw),
     Movable,
@@ -210,7 +210,7 @@ pub fn saw_template(pos: UVec2, from: Direction, to: Direction) -> impl hecs::Dy
   )
 }
 
-pub fn player_template(pos: UVec2) -> impl hecs::DynamicBundle {
+pub fn player_template(pos: UVec2) -> impl DynamicBundle {
   (
     Sprite(SpriteID::Player),
     ZIndex(1),
@@ -225,15 +225,15 @@ pub fn player_template(pos: UVec2) -> impl hecs::DynamicBundle {
   )
 }
 
-pub fn wall_template(pos: UVec2, sprite_id: SpriteID) -> impl hecs::DynamicBundle {
+pub fn wall_template(pos: UVec2, sprite_id: SpriteID) -> impl DynamicBundle {
   (Sprite(sprite_id), OnGrid, Obstacle, Position(pos))
 }
 
-pub fn crate_template(pos: UVec2) -> impl hecs::DynamicBundle {
+pub fn crate_template(pos: UVec2) -> impl DynamicBundle {
   (Sprite(SpriteID::Crate), ZIndex(1), OnGrid, Solid, Obstacle, Movable, Pushable, Position(pos))
 }
 
-pub fn fireball_template(pos: UVec2, facing_dir: Direction) -> impl hecs::DynamicBundle {
+pub fn fireball_template(pos: UVec2, facing_dir: Direction) -> impl DynamicBundle {
   (
     Sprite(SpriteID::Fireball),
     Movable,
@@ -246,7 +246,7 @@ pub fn fireball_template(pos: UVec2, facing_dir: Direction) -> impl hecs::Dynami
   )
 }
 
-pub fn fireball_thrower_template(pos: UVec2, facing_dir: Direction) -> impl hecs::DynamicBundle {
+pub fn fireball_thrower_template(pos: UVec2, facing_dir: Direction) -> impl DynamicBundle {
   (
     Sprite(SpriteID::FireballThrower),
     OnGrid,
@@ -256,11 +256,11 @@ pub fn fireball_thrower_template(pos: UVec2, facing_dir: Direction) -> impl hecs
   )
 }
 
-pub fn pressure_plate_template(pos: UVec2) -> impl hecs::DynamicBundle {
+pub fn pressure_plate_template(pos: UVec2) -> impl DynamicBundle {
   (Sprite(SpriteID::PressurePlate), OnGrid, Position(pos), Script(ScriptID::PressurePlate))
 }
 
-pub fn door_template(pos: UVec2, is_locked: bool) -> impl hecs::DynamicBundle {
+pub fn door_template(pos: UVec2, is_locked: bool) -> impl DynamicBundle {
   (
     StatefulObjectKind::Door,
     Sprite(if is_locked { SpriteID::DoorLocked } else { SpriteID::DoorUnlocked }),

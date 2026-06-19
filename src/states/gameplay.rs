@@ -1,5 +1,5 @@
 use crate::components::*;
-use crate::core::{DrawDestination, Game, WorldGrid, WorldGridError};
+use crate::core::{DrawDestination, Game, WorldGrid, WorldGridError, is_any_animation_active};
 use crate::lock_picking::LockKind;
 use crate::resources::*;
 use crate::serialize::WorldInfo;
@@ -19,7 +19,7 @@ use macroquad::audio::play_sound_once;
 use macroquad::logging as log;
 use macroquad::prelude::*;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ops::Deref;
 
 pub struct Gameplay {
@@ -158,7 +158,7 @@ impl Gameplay {
   }
 
   fn process_events(&mut self) {
-    while let Some(event) = self.game_events.take_last() {
+    while let Some(event) = self.game_events.take_first() {
       let sound_id = match event {
         GameEvent::DoorLock(entity) => {
           let _ = self.world_grid.insert_one(entity, Locked(LockKind::Basic));
@@ -248,7 +248,7 @@ impl Gameplay {
       }
 
       if opts.can_push && self.world_grid.satisfies::<&Pushable>(cell_entity) {
-        self.move_entity(entity, MoveOptions::new(opts.dir));
+        self.move_entity(cell_entity, MoveOptions::new(opts.dir));
       }
     }
 
@@ -363,24 +363,25 @@ pub enum GameEvent {
 
 #[derive(Serialize, Deserialize)]
 pub struct GameEventManager {
-  events: Vec<GameEvent>,
+  events: VecDeque<GameEvent>,
 }
 
 impl GameEventManager {
   pub fn new() -> Self {
-    Self { events: Vec::new() }
+    Self { events: VecDeque::new() }
   }
 
   pub fn add(&mut self, event: GameEvent) {
-    self.events.push(event)
+    self.events.push_back(event)
   }
 
-  pub fn take_last(&mut self) -> Option<GameEvent> {
-    self.events.pop()
+  pub fn take_first(&mut self) -> Option<GameEvent> {
+    self.events.pop_front()
   }
 
   pub fn as_slice(&self) -> &[GameEvent] {
-    self.events.as_slice()
+    let (front, _) = self.events.as_slices();
+    front
   }
 }
 

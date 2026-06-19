@@ -297,6 +297,10 @@ impl Deref for WorldGrid {
   }
 }
 
+pub fn is_any_animation_active(world: &World) -> bool {
+  world.query::<&Animation>().iter().any(|anim| !anim.is_finished())
+}
+
 #[derive(PartialEq)]
 pub enum DrawDestination {
   OntoRenderTarget,

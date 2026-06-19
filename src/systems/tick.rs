@@ -1,7 +1,6 @@
 use crate::components::{ActionKind, CausesDeath, Mortal, MoveOptions, Position};
-use crate::core::{Direction, WorldGrid};
+use crate::core::{Direction, WorldGrid, is_any_animation_active};
 use crate::states::gameplay::{GameEvent, GameEventManager};
-use crate::systems::draw::*;
 
 use hecs::Entity;
 use macroquad::input::{KeyCode, get_last_key_pressed};

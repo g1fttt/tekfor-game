@@ -8,6 +8,8 @@ use editor::Editor;
 use gameplay::Gameplay;
 use menu::Menu;
 
+use hecs::World;
+
 pub enum GameState {
   Menu(Menu),
   Editor(Box<Editor>),
@@ -23,5 +25,5 @@ impl Default for GameState {
 pub enum PlannedGameState {
   Menu,
   Editor,
-  Gameplay(Box<(WorldInfo, hecs::World)>),
+  Gameplay(Box<(WorldInfo, World)>),
 }

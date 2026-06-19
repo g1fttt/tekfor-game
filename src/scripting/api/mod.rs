@@ -4,20 +4,21 @@ mod world;
 #[cfg(test)]
 mod tests {
   use crate::components::Position;
-  use crate::core;
+  use crate::core::WorldGrid;
   use crate::scripting::engine::create as create_lua;
   use crate::serialize::WorldInfo;
   use crate::states::gameplay::{GameEvent, GameEventManager};
 
+  use hecs::World;
   use macroquad::math::{UVec2, uvec2};
   use mlua::prelude::*;
 
   fn with_world_grid<R: FromLuaMulti>(
     code: &str,
-  ) -> anyhow::Result<(Lua, core::WorldGrid, GameEventManager, R)> {
+  ) -> LuaResult<(Lua, WorldGrid, GameEventManager, R)> {
     let lua = create_lua()?;
 
-    let mut world_grid = core::WorldGrid::new(&WorldInfo::new(32, 32), hecs::World::new());
+    let mut world_grid = WorldGrid::new(&WorldInfo::new(32, 32), World::new());
     let mut game_events = GameEventManager::new();
 
     let result = lua.scope(|scope| {
