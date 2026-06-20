@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use strum::{EnumDiscriminants, EnumIter, IntoStaticStr};
 
 use std::collections::{HashSet, VecDeque};
-use std::rc::Rc;
 
 macro_rules! deref_component {
   ($from:ty, $into:ty) => {
@@ -131,28 +130,8 @@ pub struct Bouncing {
   pub to: Direction,
 }
 
-// NOTE: Стоит использовать Arc если планируется многопоточность.
-//
-/// # Safety
-/// Тип не является потокобезопасным, ведь использует `Rc` во внутренней реализации,
-/// но при этом этот тип реализует такие типажи как: `Sync` и `Send`,
-/// чтобы компилятор думал будто это потокобезопасный тип.
 #[derive(Serialize, Deserialize)]
-pub struct LinkedEntities(Rc<HashSet<Entity>>);
-
-impl LinkedEntities {
-  pub fn new(entities: HashSet<Entity>) -> Self {
-    Self(Rc::new(entities))
-  }
-
-  pub fn get_mut(&mut self) -> Option<&mut HashSet<Entity>> {
-    Rc::get_mut(&mut self.0)
-  }
-
-  pub fn get(&self) -> &HashSet<Entity> {
-    &self.0
-  }
-}
+pub struct LinkedEntities(pub HashSet<Entity>);
 
 unsafe impl Sync for LinkedEntities {}
 unsafe impl Send for LinkedEntities {}
@@ -200,6 +179,7 @@ deref_component!(Script, ScriptID);
 deref_component!(ActionQueue, VecDeque<ActionKind>);
 deref_component!(Facing, Direction);
 deref_component!(Locked, LockKind);
+deref_component!(LinkedEntities, HashSet<Entity>);
 
 pub fn downstairs_template(pos: UVec2, sprite_id: SpriteID) -> impl DynamicBundle {
   (Sprite(sprite_id), Downstairs, OnGrid, Position(pos), Script(ScriptID::Downstairs))

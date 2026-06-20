@@ -144,7 +144,7 @@ impl Editor {
       .world_grid
       .query::<(&LinkedEntities, &Position)>()
       .into_iter()
-      .map(|(linked_entities, pos)| (linked_entities.get(), pos.global_centered()))
+      .map(|(linked_entities, pos)| (linked_entities, pos.global_centered()))
     {
       for &linked_entity in linked_entities.iter() {
         let Ok(dest_pos) = self
@@ -440,7 +440,7 @@ impl Editor {
       if !linked_entities.is_empty() {
         let _ = this
           .world_grid
-          .insert_one(pressure_plate_entity, LinkedEntities::new(linked_entities.clone()));
+          .insert_one(pressure_plate_entity, LinkedEntities(linked_entities.clone()));
       }
       Some(pressure_plate_entity)
     })

@@ -266,12 +266,7 @@ impl WorldGrid {
   }
 
   fn unlink_entity(&mut self, entity: Entity) {
-    for linked_entities in self
-      .world
-      .query_mut::<&mut LinkedEntities>()
-      .into_iter()
-      .filter_map(|linked_entities| linked_entities.get_mut())
-    {
+    for linked_entities in self.world.query_mut::<&mut LinkedEntities>().into_iter() {
       linked_entities.remove(&entity);
     }
   }
