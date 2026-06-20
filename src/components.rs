@@ -133,9 +133,6 @@ pub struct Bouncing {
 #[derive(Serialize, Deserialize)]
 pub struct LinkedEntities(pub HashSet<Entity>);
 
-unsafe impl Sync for LinkedEntities {}
-unsafe impl Send for LinkedEntities {}
-
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Facing(pub Direction);
 
