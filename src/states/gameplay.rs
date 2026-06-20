@@ -242,15 +242,7 @@ impl Gameplay {
       return;
     };
 
-    for cell_entity in cell_entities {
-      if self.world_grid.satisfies::<&Intelligent>(entity) {
-        self.game_events.add(GameEvent::EntityInteracted(cell_entity))
-      }
-
-      if opts.can_push && self.world_grid.satisfies::<&Pushable>(cell_entity) {
-        self.move_entity(cell_entity, MoveOptions::new(opts.dir));
-      }
-    }
+    self.interact_with_cell(entity, &cell_entities, &opts);
 
     let Ok(entity_move_success) = self.move_entity_to_pos(entity, new_pos) else {
       return;
@@ -265,6 +257,18 @@ impl Gameplay {
       let _ = self.world_grid.insert_one(entity, Animation::new(move_animation));
     } else if !entity_move_success && opts.despawn_if_collided {
       self.game_events.add(GameEvent::EntityDespawn(entity));
+    }
+  }
+
+  fn interact_with_cell(&mut self, intiator: Entity, cell_entities: &[Entity], opts: &MoveOptions) {
+    for &cell_entity in cell_entities {
+      if self.world_grid.satisfies::<&Intelligent>(intiator) {
+        self.game_events.add(GameEvent::EntityInteracted(cell_entity));
+      }
+
+      if opts.can_push && self.world_grid.satisfies::<&Pushable>(cell_entity) {
+        self.move_entity(cell_entity, MoveOptions::new(opts.dir));
+      }
     }
   }
 

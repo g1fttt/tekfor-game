@@ -1,12 +1,13 @@
 use crate::components::*;
 use crate::core::{CELL_SIZE, Direction, DrawDestination, Game, WorldGrid, WorldGridError};
 use crate::lock_picking::LockKind;
-use crate::resources::{AssetManager, SpriteID};
+use crate::resources::{AssetManager, SpriteID, TextureProvider};
 use crate::serialize::{self, WorldInfo};
 use crate::states::PlannedGameState;
 use crate::systems::draw::draw_sprites;
-use crate::utils;
+use crate::utils::{self, HumanString};
 
+use egui::load::SizedTexture;
 use egui_macroquad::egui;
 use hecs::Entity;
 use strum::IntoEnumIterator;
@@ -18,6 +19,7 @@ use std::collections::HashSet;
 
 pub struct Editor {
   asset_manager: AssetManager,
+  sprite_texture_handles: Vec<(egui::TextureHandle, SpriteID)>,
   level_path: String,
   world_grid: WorldGrid,
   world_info: WorldInfo,
@@ -33,6 +35,7 @@ impl Editor {
   pub fn new(asset_manager: AssetManager) -> Self {
     Self {
       asset_manager,
+      sprite_texture_handles: Vec::new(),
       level_path: String::new(),
       world_grid: WorldGrid::default(),
       world_info: WorldInfo::default(),
@@ -54,62 +57,15 @@ impl Editor {
   }
 
   pub fn draw_ui(&mut self, egui_ctx: &egui::Context) {
-    egui::Window::new("Level editor").resizable(false).show(egui_ctx, |ui| {
-      if ui.button("Return to main menu").clicked() {
-        self.should_return_to_menu = true;
-      }
+    if self.sprite_texture_handles.is_empty() {
+      self.load_textures(egui_ctx);
+    }
 
-      ui.separator();
+    self.draw_controls_window(egui_ctx);
 
-      let save_load_result = ui.horizontal(|ui| {
-        let resp = egui::TextEdit::singleline(&mut self.level_path)
-          .hint_text("Level path")
-          .show(ui)
-          .response;
-
-        self.should_capture_keyboard = resp.clicked() || resp.changed();
-
-        if ui.button("Save").clicked() {
-          serialize::save_world(&self.level_path, &self.world_info, &self.world_grid)?;
-        }
-
-        if ui.button("Load").clicked() {
-          let (info, world) = serialize::load_world(&self.level_path)?;
-
-          self.world_grid = WorldGrid::new(&info, world);
-          self.world_info = info;
-        }
-        Ok::<(), anyhow::Error>(())
-      });
-
-      if let Err(err) = save_load_result.inner {
-        log::error!("{}", err);
-      }
-
-      let is_world_width_changed =
-        draw_drag_value_ui("World width", &mut self.world_info.width, ui).changed();
-      let is_world_height_changed =
-        draw_drag_value_ui("World height", &mut self.world_info.height, ui).changed();
-
-      let should_resize_grid = is_world_width_changed || is_world_height_changed;
-
-      if should_resize_grid {
-        self.world_grid.resize(self.world_info.width, self.world_info.height);
-      }
-
-      ui.separator();
-
-      let is_in_bounds = self.world_grid.get_cell(self.cursor_pos).is_ok();
-
-      if is_in_bounds {
-        self.draw_current_entity_ui(ui);
-        self.draw_sprite_ui(ui);
-
-        ui.separator();
-      }
-
-      ui.label(format!("Position: x: {}, y: {}", self.cursor_pos.x, self.cursor_pos.y));
-    });
+    if self.is_in_bounds() {
+      self.draw_sprite_palette_window(egui_ctx);
+    }
   }
 
   pub fn planned(&self) -> Option<PlannedGameState> {
@@ -177,61 +133,123 @@ impl Editor {
     draw_rectangle_lines(x, y, CELL_SIZE, CELL_SIZE, 2.0, color);
   }
 
-  fn draw_current_entity_ui(&mut self, ui: &mut egui::Ui) {
-    let Ok(cell_entities) = self.world_grid.get_cell(self.cursor_pos) else {
-      return;
-    };
+  fn draw_sprite_palette_window(&mut self, egui_ctx: &egui::Context) {
+    egui::Window::new("Sprite palette").default_open(false).show(egui_ctx, |ui| {
+      const TEXTURE_PREVIEW_SIZE: f32 = 64.0;
 
-    let selected_text: &'static str = self
-      .selected_entity
-      .and_then(|entity| utils::entity_sprite_text(&self.world_grid, entity))
-      .unwrap_or("...");
+      // TODO: Вынести в глобальные настройки
+      let values_per_row = 5;
 
-    egui::ComboBox::from_label("Current entity").selected_text(selected_text).show_ui(ui, |ui| {
-      for &entity in cell_entities {
-        let Some(sprite_text) = utils::entity_sprite_text(&self.world_grid, entity) else {
-          continue;
-        };
+      let total_rows = self.sprite_texture_handles.len().div_ceil(values_per_row);
 
-        ui.selectable_value(&mut self.selected_entity, Some(entity), sprite_text);
-      }
+      egui::ScrollArea::vertical().show_rows(
+        ui,
+        TEXTURE_PREVIEW_SIZE,
+        total_rows,
+        |ui, row_range| {
+          let mut handle_iter = self.sprite_texture_handles.iter();
+
+          for _ in row_range {
+            ui.horizontal(|ui| {
+              for _ in 0..values_per_row {
+                let Some((handle, id)) = handle_iter.next() else {
+                  return;
+                };
+
+                let sized_texture =
+                  SizedTexture::new(handle.id(), [TEXTURE_PREVIEW_SIZE, TEXTURE_PREVIEW_SIZE]);
+                let is_selected = self.entity_info.sprite_id.is_some_and(|id_| id_ == *id);
+
+                let image_button =
+                  egui::ImageButton::new(egui::ImageSource::Texture(sized_texture))
+                    .selected(is_selected);
+
+                let resp = ui.add(image_button).on_hover_text(id.humanize());
+
+                if resp.clicked() {
+                  self.entity_info.sprite_id.replace(*id);
+                }
+              }
+            });
+          }
+        },
+      );
     });
   }
 
-  fn draw_sprite_ui(&mut self, ui: &mut egui::Ui) {
-    let selected_text: &'static str = self.entity_info.sprite_id.map(Into::into).unwrap_or("...");
-
-    egui::ComboBox::from_label("Asset").selected_text(selected_text).show_ui(ui, |ui| {
-      for sprite_id in SpriteID::iter() {
-        let text: &'static str = sprite_id.into();
-
-        ui.selectable_value(&mut self.entity_info.sprite_id, Some(sprite_id), text);
+  fn draw_controls_window(&mut self, egui_ctx: &egui::Context) {
+    egui::Window::new("Controls").show(egui_ctx, |ui| {
+      if ui.button("Return to main menu").clicked() {
+        self.should_return_to_menu = true;
       }
-    });
 
+      ui.separator();
+
+      let save_load_result = ui.horizontal(|ui| {
+        let resp = egui::TextEdit::singleline(&mut self.level_path)
+          .hint_text("Level path")
+          .show(ui)
+          .response;
+
+        self.should_capture_keyboard = resp.clicked() || resp.changed();
+
+        if ui.button("Save").clicked() {
+          serialize::save_world(&self.level_path, &self.world_info, &self.world_grid)?;
+        }
+
+        if ui.button("Load").clicked() {
+          let (info, world) = serialize::load_world(&self.level_path)?;
+
+          self.world_grid = WorldGrid::new(&info, world);
+          self.world_info = info;
+        }
+        Ok::<(), anyhow::Error>(())
+      });
+
+      if let Err(err) = save_load_result.inner {
+        log::error!("{}", err);
+      }
+
+      let is_world_width_changed =
+        draw_drag_value_ui("World width", &mut self.world_info.width, ui).changed();
+      let is_world_height_changed =
+        draw_drag_value_ui("World height", &mut self.world_info.height, ui).changed();
+
+      let should_resize_grid = is_world_width_changed || is_world_height_changed;
+
+      if should_resize_grid {
+        self.world_grid.resize(self.world_info.width, self.world_info.height);
+      }
+
+      ui.separator();
+
+      if self.is_in_bounds() {
+        self.draw_current_entity_ui(ui);
+        self.draw_entity_control_ui(ui);
+      }
+
+      ui.label(format!("Position: x: {}, y: {}", self.cursor_pos.x, self.cursor_pos.y));
+    });
+  }
+
+  fn draw_entity_control_ui(&mut self, ui: &mut egui::Ui) {
     self.draw_sprite_param_ui(ui);
 
     if self.selected_entity.is_some() && ui.button("Despawn entity").clicked() {
       self.try_despawn_selected_entity();
     }
 
-    ui.separator();
-
     ui.checkbox(&mut self.is_in_linkage_mode, "Linkage mode");
-
     ui.separator();
-
     ui.label("Linked entities:");
 
     egui::ScrollArea::vertical().show(ui, |ui| {
       for &entity in self.entity_info.linked_entities.iter() {
-        let Some(sprite_text) = utils::entity_sprite_text(&self.world_grid, entity) else {
-          continue;
-        };
-
         let Ok(pos) = self.world_grid.get::<&Position>(entity).map(|pos| pos.into_inner()) else {
           continue;
         };
+
+        let sprite_text = utils::entity_sprite_text_default(&self.world_grid, entity);
 
         ui.label(format!("{} (x: {}, y: {})", sprite_text, pos.x, pos.y));
       }
@@ -257,13 +275,32 @@ impl Editor {
     });
   }
 
+  fn draw_current_entity_ui(&mut self, ui: &mut egui::Ui) {
+    let Ok(cell_entities) = self.world_grid.get_cell(self.cursor_pos) else {
+      return;
+    };
+
+    let Some(selected_text) = self
+      .selected_entity
+      .map(|entity| utils::entity_sprite_text_default(&self.world_grid, entity))
+    else {
+      return;
+    };
+
+    egui::ComboBox::from_label("Current entity").selected_text(selected_text).show_ui(ui, |ui| {
+      for &entity in cell_entities {
+        let sprite_text = utils::entity_sprite_text_default(&self.world_grid, entity);
+
+        ui.selectable_value(&mut self.selected_entity, Some(entity), sprite_text);
+      }
+    });
+  }
+
   #[rustfmt::skip]
   fn draw_sprite_param_ui(&mut self, ui: &mut egui::Ui)  {
     let Some(sprite_id) = self.entity_info.sprite_id else {
       return;
     };
-
-    ui.separator();
 
     let spawned_entity = match sprite_id {
       wall_sprite_id @ (SpriteID::WallHorizontal
@@ -307,13 +344,11 @@ impl Editor {
   }
 
   fn draw_door_locked_ui(&mut self, ui: &mut egui::Ui) -> Option<Entity> {
-    let selected_text: &'static str = self.entity_info.lock_kind.map(Into::into).unwrap_or("...");
+    let selected_text = self.entity_info.lock_kind.map(|lk| lk.humanize()).unwrap_or_default();
 
     egui::ComboBox::from_label("Lock kind").selected_text(selected_text).show_ui(ui, |ui| {
       for lock_kind in LockKind::iter() {
-        let text: &'static str = lock_kind.into();
-
-        ui.selectable_value(&mut self.entity_info.lock_kind, Some(lock_kind), text);
+        ui.selectable_value(&mut self.entity_info.lock_kind, Some(lock_kind), lock_kind.humanize());
       }
     });
 
@@ -390,16 +425,45 @@ impl Editor {
     ui: &mut egui::Ui,
     f: impl Fn(&mut Self) -> Option<Entity>,
   ) -> Option<Entity> {
-    if ui.button("Spawn entity").clicked() { f(self) } else { None }
+    if ui.button("Spawn entity").clicked() {
+      let result = f(self);
+      {
+        self.entity_info.linked_entities.clear();
+      }
+      result
+    } else {
+      None
+    }
+  }
+
+  fn is_in_bounds(&self) -> bool {
+    self.world_grid.get_cell(self.cursor_pos).is_ok()
+  }
+
+  fn load_textures(&mut self, egui_ctx: &egui::Context) {
+    for id in SpriteID::iter() {
+      let tex = self.asset_manager.get_texture(id);
+      let tex_data = tex.get_texture_data();
+
+      let image = egui::ColorImage::from_rgba_unmultiplied(
+        [tex_data.width(), tex_data.height()],
+        &tex_data.bytes,
+      );
+
+      let id_str: &'static str = id.into();
+      let handle = egui_ctx.load_texture(id_str, image, egui::TextureOptions::NEAREST);
+
+      self.sprite_texture_handles.push((handle, id));
+    }
   }
 }
 
 fn draw_direction_ui(label: &str, dir: &mut Option<Direction>, ui: &mut egui::Ui) {
-  let selected_text: &'static str = dir.map(Into::into).unwrap_or("...");
+  let selected_text = dir.map(|d| d.humanize()).unwrap_or_default();
 
   egui::ComboBox::from_label(label).selected_text(selected_text).show_ui(ui, |ui| {
     for curr_dir in Direction::iter() {
-      let text: &'static str = curr_dir.into();
+      let text = curr_dir.humanize();
 
       ui.selectable_value(dir, Some(curr_dir), text);
     }

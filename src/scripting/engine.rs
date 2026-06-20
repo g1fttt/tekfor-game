@@ -34,10 +34,14 @@ fn preload_utils_module(lua: &Lua, module: &LuaTable) -> LuaResult<()> {
   module.set("advance_pos_in_direction", advance_pos_in_direction)
 }
 
+/// # Safety
+/// Вызовет панику если `E` - это Generic-тип.
 fn add_enum<E>(lua: &Lua) -> LuaResult<()>
 where
   E: IntoEnumIterator + Into<&'static str> + Serialize + 'static,
 {
+  let enum_name = utils::type_name_str::<E>().unwrap();
+
   let enum_table = lua.create_table()?;
 
   for variant in E::iter() {
@@ -46,8 +50,6 @@ where
 
     enum_table.set(key, value)?;
   }
-
-  let enum_name = crate::utils::type_name_str::<E>();
 
   lua.globals().set(enum_name, enum_table)
 }
