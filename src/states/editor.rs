@@ -27,6 +27,7 @@ pub struct Editor {
   selected_entity: Option<Entity>,
   should_capture_keyboard: bool,
   should_return_to_menu: bool,
+  should_draw_entity_links: bool,
   is_in_linkage_mode: bool,
   entity_info: EntityInfo,
 }
@@ -43,6 +44,7 @@ impl Editor {
       selected_entity: None,
       should_capture_keyboard: false,
       should_return_to_menu: false,
+      should_draw_entity_links: true,
       is_in_linkage_mode: false,
       entity_info: EntityInfo::default(),
     }
@@ -53,6 +55,10 @@ impl Editor {
       draw_sprites(&self.world_grid, &self.asset_manager);
 
       self.draw_cursor();
+
+      if self.should_draw_entity_links {
+        self.draw_entity_links();
+      }
     });
   }
 
@@ -133,9 +139,49 @@ impl Editor {
     draw_rectangle_lines(x, y, CELL_SIZE, CELL_SIZE, 2.0, color);
   }
 
+  fn draw_entity_links(&self) {
+    for (linked_entities, src_pos) in self
+      .world_grid
+      .query::<(&LinkedEntities, &Position)>()
+      .into_iter()
+      .map(|(linked_entities, pos)| (linked_entities.get(), pos.global_centered()))
+    {
+      for &linked_entity in linked_entities.iter() {
+        let Ok(dest_pos) = self
+          .world_grid
+          .get::<&Position>(linked_entity)
+          .map(|linked_entity| linked_entity.global_centered())
+        else {
+          continue;
+        };
+
+        draw_line(src_pos.x, src_pos.y, dest_pos.x, dest_pos.y, 2.0, GREEN);
+      }
+    }
+  }
+
   fn draw_sprite_palette_window(&mut self, egui_ctx: &egui::Context) {
     egui::Window::new("Sprite palette").default_open(false).show(egui_ctx, |ui| {
       const TEXTURE_PREVIEW_SIZE: f32 = 64.0;
+
+      fn draw_sprite_image_button(
+        ui: &mut egui::Ui,
+        (handle, id): &(egui::TextureHandle, SpriteID),
+        entity_info: &mut EntityInfo,
+      ) {
+        let sized_texture =
+          SizedTexture::new(handle.id(), [TEXTURE_PREVIEW_SIZE, TEXTURE_PREVIEW_SIZE]);
+        let is_selected = entity_info.sprite_id.is_some_and(|id_| id_ == *id);
+
+        let image_button =
+          egui::ImageButton::new(egui::ImageSource::Texture(sized_texture)).selected(is_selected);
+
+        let resp = ui.add(image_button).on_hover_text(id.humanize());
+
+        if resp.clicked() {
+          entity_info.sprite_id.replace(*id);
+        }
+      }
 
       // TODO: Вынести в глобальные настройки
       let values_per_row = 5;
@@ -152,23 +198,11 @@ impl Editor {
           for _ in row_range {
             ui.horizontal(|ui| {
               for _ in 0..values_per_row {
-                let Some((handle, id)) = handle_iter.next() else {
+                let Some(handle) = handle_iter.next() else {
                   return;
                 };
 
-                let sized_texture =
-                  SizedTexture::new(handle.id(), [TEXTURE_PREVIEW_SIZE, TEXTURE_PREVIEW_SIZE]);
-                let is_selected = self.entity_info.sprite_id.is_some_and(|id_| id_ == *id);
-
-                let image_button =
-                  egui::ImageButton::new(egui::ImageSource::Texture(sized_texture))
-                    .selected(is_selected);
-
-                let resp = ui.add(image_button).on_hover_text(id.humanize());
-
-                if resp.clicked() {
-                  self.entity_info.sprite_id.replace(*id);
-                }
+                draw_sprite_image_button(ui, handle, &mut self.entity_info);
               }
             });
           }
@@ -239,6 +273,11 @@ impl Editor {
       self.try_despawn_selected_entity();
     }
 
+    if self.entity_info.sprite_id.is_some() {
+      ui.separator();
+    }
+
+    ui.checkbox(&mut self.should_draw_entity_links, "Draw entity links");
     ui.checkbox(&mut self.is_in_linkage_mode, "Linkage mode");
     ui.separator();
     ui.label("Linked entities:");

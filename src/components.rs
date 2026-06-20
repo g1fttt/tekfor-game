@@ -1,4 +1,4 @@
-use crate::core::Direction;
+use crate::core::{CELL_SIZE, Direction};
 use crate::lock_picking::LockKind;
 use crate::resources::{ScriptID, Settings, SpriteID};
 
@@ -110,6 +110,10 @@ impl Position {
   pub fn global(self) -> Vec2 {
     crate::utils::global_pos(self.into_inner())
   }
+
+  pub fn global_centered(self) -> Vec2 {
+    self.global() + CELL_SIZE / 2.0
+  }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -143,6 +147,10 @@ impl LinkedEntities {
 
   pub fn get_mut(&mut self) -> Option<&mut HashSet<Entity>> {
     Rc::get_mut(&mut self.0)
+  }
+
+  pub fn get(&self) -> &HashSet<Entity> {
+    &self.0
   }
 }
 
